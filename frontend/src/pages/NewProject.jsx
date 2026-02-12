@@ -7,6 +7,7 @@ import Flag from '../components/ui/Flag';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import PageLayout from '../components/layout/PageLayout';
+import { levelToCefr } from '../utils/cefr';
 
 const SAMPLE_TITLE = 'Winnie-the-Pooh — The Flood';
 const SAMPLE_TEXT = `When the rain began Pooh was asleep. It rained, and it rained, and it rained, and he slept and he slept and he slept. He had had a tiring day. You remember how he discovered the North Pole; well, he was so proud of this that he asked Christopher Robin if there were any other Poles such as a Bear of Little Brain might discover.
@@ -35,6 +36,7 @@ export default function NewProject() {
 
   const wordCount = text.trim() ? text.trim().split(/\s+/).length : 0;
   const userLevel = (currentUser?.levels || {})[lang] || 0;
+  const userCefr = levelToCefr(userLevel);
 
   if (!currentUser) {
     return (
@@ -134,7 +136,7 @@ export default function NewProject() {
             </p>
           ) : (
             <p className="text-xs text-text-muted mt-2">
-              <Flag code={lang} size="sm" /> Your level: {userLevel} &mdash; text transforms through 7 gradient levels.
+              <Flag code={lang} size="sm" /> Your profile level: {userCefr || 'A1'} &mdash; text transforms through 7 gradient levels.
             </p>
           )}
         </div>

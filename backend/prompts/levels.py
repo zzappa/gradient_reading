@@ -568,6 +568,7 @@ def _lexical_safety_block(target_name: str) -> str:
     return (
         f"LEXICAL SAFETY (for {target_name}, required):\n"
         "- NEVER invent, coin, or fabricate words.\n"
+        "- Never use non-existent derivatives or nonce forms.\n"
         "- Use only real, attested dictionary words and natural collocations.\n"
         "- If unsure, choose a simpler high-frequency word that is definitely valid.\n"
         "- Do not create ad-hoc derivations to force literal one-to-one translation.\n"
@@ -675,7 +676,6 @@ def _language_nativeness_constraints_block(lang_code: str, level: int) -> str:
             "- Avoid unnecessary pronouns; Russian often omits subjects once established.\n"
             "- Use correct aspect (perfective/imperfective) for narrative sequence.\n"
             "- Prefer idiomatic collocations; avoid literal English phrasing.\n"
-            "- Never coin non-existent derivatives or nonce forms.\n"
         ),
         "pl": (
             "LANGUAGE NATIVENESS (Polish, levels 6–7):\n"

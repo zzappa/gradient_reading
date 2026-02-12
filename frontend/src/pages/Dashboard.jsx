@@ -14,6 +14,7 @@ import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
 import Spinner from '../components/ui/Spinner';
 import PageLayout from '../components/layout/PageLayout';
+import { levelToCefr } from '../utils/cefr';
 
 const STATUS_STYLES = {
   created: 'bg-surface text-text-muted',
@@ -141,7 +142,7 @@ export default function Dashboard() {
                 {' '}&middot;{' '}
                 {levelEntries.map(([code, lv]) => (
                   <span key={code} className="mr-2">
-                    <Flag code={code} size="sm" /> Lv {lv}
+                    <Flag code={code} size="sm" /> {levelToCefr(lv) || `Lv ${lv}`}
                   </span>
                 ))}
               </span>
@@ -276,7 +277,9 @@ export default function Dashboard() {
                         </span>
                         <div className="text-xs mt-0.5">
                           {s.completed ? (
-                            <span className="text-emerald-600">Level {s.result_level}</span>
+                            <span className="text-emerald-600">
+                              CEFR {s.result_cefr || levelToCefr(s.result_level)}
+                            </span>
                           ) : (
                             <span className="text-text-muted">In progress</span>
                           )}

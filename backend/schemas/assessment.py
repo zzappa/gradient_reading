@@ -1,5 +1,7 @@
 from datetime import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, computed_field
+
+from assessment_scale import internal_to_cefr
 
 
 class AssessmentStart(BaseModel):
@@ -15,6 +17,7 @@ class AssessmentResponse(BaseModel):
     response: str
     completed: bool
     level: int | None = None
+    cefr: str | None = None
 
 
 class AssessmentRead(BaseModel):
@@ -25,5 +28,10 @@ class AssessmentRead(BaseModel):
     result_level: int | None
     completed: bool
     created_at: datetime
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def result_cefr(self) -> str | None:
+        return internal_to_cefr(self.result_level)
 
     model_config = {"from_attributes": True}

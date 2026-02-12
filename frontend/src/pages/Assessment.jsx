@@ -14,6 +14,7 @@ import Flag from '../components/ui/Flag';
 import Button from '../components/ui/Button';
 import Spinner from '../components/ui/Spinner';
 import PageLayout from '../components/layout/PageLayout';
+import { levelToCefr } from '../utils/cefr';
 
 export default function Assessment() {
   const { currentUser, updateCurrentUser } = useUser();
@@ -27,6 +28,7 @@ export default function Assessment() {
   const [sending, setSending] = useState(false);
   const [completed, setCompleted] = useState(false);
   const [resultLevel, setResultLevel] = useState(null);
+  const [resultCefr, setResultCefr] = useState(null);
   const [sessionLang, setSessionLang] = useState(null);
   const [history, setHistory] = useState([]);
   const [showHistory, setShowHistory] = useState(!resumeId);
@@ -50,11 +52,12 @@ export default function Assessment() {
           setSessionId(session.id);
           setSessionLang(session.target_language);
           const msgs = (session.messages || []).filter(
-            (m, i) => !(i === 0 && m.role === 'user' && m.content.includes("I'd like to find out my level"))
+            (m, i) => !(i === 0 && m.role === 'user')
           );
           setMessages(msgs);
           setCompleted(session.completed);
           setResultLevel(session.result_level);
+          setResultCefr(session.result_cefr || levelToCefr(session.result_level));
           setShowHistory(false);
         })
         .catch((err) => {
@@ -70,6 +73,7 @@ export default function Assessment() {
     setMessages([]);
     setCompleted(false);
     setResultLevel(null);
+    setResultCefr(null);
     setSessionId(null);
     setSessionLang(langCode);
 
@@ -124,6 +128,7 @@ export default function Assessment() {
       if (data.completed) {
         setCompleted(true);
         setResultLevel(data.level);
+        setResultCefr(data.cefr || levelToCefr(data.level));
         // Update user's levels dict
         const updatedLevels = { ...(currentUser.levels || {}) };
         updatedLevels[sessionLang] = data.level;
@@ -153,9 +158,9 @@ export default function Assessment() {
       <PageLayout>
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="font-serif text-2xl font-semibold mb-1">Level assessment</h1>
+            <h1 className="font-serif text-2xl font-semibold mb-1">CEFR Assessment</h1>
             <p className="text-sm text-text-muted">
-              Choose a language and chat naturally &mdash; we&rsquo;ll figure out your level.
+              Select a language for a brief adaptive assessment aligned to the CEFR scale (A1-C2).
             </p>
           </div>
           <button
@@ -167,10 +172,11 @@ export default function Assessment() {
         </div>
 
         <div className="mb-8">
-          <h2 className="text-sm font-medium text-text-muted mb-3">Start new assessment</h2>
+          <h2 className="text-sm font-medium text-text-muted mb-3">Start a new assessment</h2>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             {LANGUAGE_LIST.map((lang) => {
               const userLevel = (currentUser.levels || {})[lang.code];
+              const userCefr = levelToCefr(userLevel);
               return (
                 <button
                   key={lang.code}
@@ -180,8 +186,8 @@ export default function Assessment() {
                   <Flag code={lang.code} size="lg" />
                   <div>
                     <div className="text-sm font-medium">{lang.name}</div>
-                    {userLevel != null && (
-                      <div className="text-xs text-text-muted">Level {userLevel}</div>
+                    {userCefr && (
+                      <div className="text-xs text-text-muted">Current estimate: {userCefr}</div>
                     )}
                   </div>
                 </button>
@@ -212,7 +218,9 @@ export default function Assessment() {
                       </span>
                       <div className="text-xs mt-0.5">
                         {s.completed ? (
-                          <span className="text-emerald-600">Level {s.result_level}</span>
+                          <span className="text-emerald-600">
+                            CEFR {s.result_cefr || levelToCefr(s.result_level)}
+                          </span>
                         ) : (
                           <span className="text-text-muted">In progress</span>
                         )}
@@ -240,10 +248,10 @@ export default function Assessment() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="font-serif text-2xl font-semibold mb-1">
-            <Flag code={sessionLang} /> Level assessment
+            <Flag code={sessionLang} /> CEFR Assessment
           </h1>
           <p className="text-sm text-text-muted">
-            Chat naturally &mdash; we&rsquo;ll figure out your {nameFor(sessionLang)} level.
+            Respond naturally. The system will estimate your {nameFor(sessionLang)} CEFR level.
           </p>
         </div>
         <div className="flex gap-3">
@@ -306,14 +314,13 @@ export default function Assessment() {
       {completed ? (
         <div className="text-center py-6 border-t border-border">
           <p className="text-lg font-medium mb-1">
-            <Flag code={sessionLang} /> Your {nameFor(sessionLang)} level: {resultLevel}
+            <Flag code={sessionLang} /> Estimated CEFR level: {resultCefr || levelToCefr(resultLevel)}
           </p>
           <p className="text-sm text-text-muted mb-1">
-            Your texts will start transforming from level {resultLevel}, so the
-            early sections will already feel familiar.
+            This estimate is used to personalize your starting transformation level.
           </p>
           <p className="text-xs text-text-muted mb-4">
-            You can retake the assessment anytime to update your level.
+            You can retake the assessment at any time.
           </p>
           <Button onClick={() => navigate('/dashboard')}>
             Go to dashboard
