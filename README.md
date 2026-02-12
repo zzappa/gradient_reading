@@ -1,136 +1,176 @@
-# Gradient
+# Gradient Reading
 
-A web app that transforms English text progressively into Spanish through 8 levels of gradient immersion — changing syntax first, then grammar markers, then vocabulary — so readers naturally absorb the target language while reading.
+Gradient Reading is an app that transforms source text into a progressive 0-7 language-learning gradient.  
+Readers can move level-by-level from source-heavy text to target-language text while keeping story continuity and inline vocabulary support.
+
+## Highlights
+
+- FastAPI backend + React/Vite frontend
+- Async transformation jobs with progress polling
+- Source and target language selection per project
+- 0-7 graded output with inline annotations and footnotes
+- Reader with notes, side-by-side compare mode, chat, quiz, and TTS
+- Dictionary view across projects with direct context deep links
+- Export to PDF, Markdown, and EPUB
+- Assessment flow that updates a user's starting level per language
+
+## Supported Languages
+
+Language configs currently include:
+
+- `en`, `es`, `fr`, `it`, `pt`, `de`, `pl`, `ru`, `ja`, `zh`, `ko`, `he`, `ar`
+
+- Non-Latin targets are rendered in romanized text in transformed output, with native script available in term metadata/hover details.
 
 ## Prerequisites
 
+- Python 3.10+
 - [uv](https://docs.astral.sh/uv/) (Python package manager)
 - Node.js 18+
+- npm
+- Docker + Docker Compose (optional, for containerized run)
 - An [Anthropic API key](https://console.anthropic.com/)
 - WeasyPrint system dependencies (for PDF export)
 
-### WeasyPrint system dependencies (Linux/WSL)
+Linux/WSL:
 
 ```bash
 sudo apt-get update
 sudo apt-get install -y libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf2.0-0 libffi-dev libcairo2 libgirepository1.0-dev
 ```
 
-On macOS:
+macOS:
+
 ```bash
 brew install pango libffi cairo gobject-introspection
 ```
 
 ## Setup
 
-### 1. Backend
+### Backend
 
 ```bash
 cd backend
-
-# Install dependencies
 uv venv
 source .venv/bin/activate
 uv pip install -r requirements.txt
-
-# Set your API key
-echo 'ANTHROPIC_API_KEY=sk-ant-your-key-here' > .env
-echo 'DATABASE_URL=sqlite+aiosqlite:///./data/app.db' >> .env
-echo 'ENVIRONMENT=development' >> .env
+cp .env.example .env
 ```
 
-### 2. Frontend
+Edit `backend/.env` and set at least:
+
+```env
+ANTHROPIC_API_KEY=your-key
+DATABASE_URL=sqlite+aiosqlite:///./data/app.db
+ENVIRONMENT=development
+```
+
+### Frontend
 
 ```bash
 cd frontend
 npm install
 ```
 
-## Running
+## Run Locally
 
-You need two terminals.
+Use two terminals.
 
-**Terminal 1 — Backend** (starts on port 8000):
+Backend (`http://localhost:8000`):
+
 ```bash
 cd backend
 source .venv/bin/activate
 uvicorn main:app --reload
 ```
 
-The first startup automatically creates the database and seeds 3 test users:
-- **Beginner** (level 0)
-- **Intermediate** (level 3)
-- **Advanced** (level 5)
+Frontend (`http://localhost:5173`):
 
-**Terminal 2 — Frontend** (starts on port 5173):
 ```bash
 cd frontend
 npm run dev
 ```
 
-Open **http://localhost:5173** in your browser.
+On first backend startup, the app initializes the database and seeds 3 users:
 
-## Usage
+- `Beginner`
+- `Intermediate`
+- `Advanced`
 
-1. **Select a user** from the dropdown in the header (or take the assessment chat to determine your level)
-2. **Go to Dashboard** and create a new project — paste any English text (articles, book chapters, up to ~5000 words)
-3. **Watch it transform** — the app splits your text into sections and progressively transforms each one through Spanish levels
-4. **Read** in the two-panel reader with footnotes explaining each new Spanish element
-5. **Export** to PDF, Markdown, or EPUB for offline reading
+## Run with Docker
 
-## Transformation Levels
+At repository root:
 
-| Level | What Changes |
-|-------|-------------|
-| 0 | Pure English |
-| 1 | Adjectives move after nouns |
-| 2 | Spanish articles (el/la/un/una) + gender endings |
-| 3 | Spanish prepositions (de, en, con, por, para) |
-| 4 | Verb conjugations (present tense), ser/estar |
-| 5 | Object pronouns, reflexive verbs, past tense |
-| 6 | ~40% vocabulary replaced with Spanish |
-| 7 | Full simplified Spanish |
-
-## Project Structure
-
-```
-backend/
-  main.py              # FastAPI entry point
-  config.py            # Settings (reads .env)
-  database.py          # SQLite + SQLAlchemy async
-  seed.py              # Predefined test users
-  models/              # ORM models
-  schemas/             # Pydantic request/response schemas
-  routers/             # API endpoints
-  services/            # Business logic (Claude, transformation, export)
-  prompts/             # Level-specific prompt templates
-
-frontend/
-  src/
-    pages/             # Landing, Tutorial, Assessment, Dashboard, Reader, etc.
-    components/        # UI, layout, reader, assessment components
-    api/client.js      # Backend API wrapper
-    context/           # User state management
+```bash
+export ANTHROPIC_API_KEY=your-key
+docker compose up --build
 ```
 
-## API
+Services:
 
-Backend serves OpenAPI docs at **http://localhost:8000/docs** when running.
+- Frontend: `http://localhost:5173`
+- Backend API + docs: `http://localhost:8000` and `http://localhost:8000/docs`
 
-Key endpoints:
-- `GET /api/users` — list users
-- `POST /api/projects` — create a project
-- `POST /api/projects/{id}/transform` — start transformation (async)
-- `GET /api/jobs/{id}` — poll transformation progress
-- `GET /api/projects/{id}/chapters/{num}` — read a chapter
-- `GET /api/projects/{id}/export/pdf` — download PDF
-- `POST /api/assessment/start` — start level assessment chat
+Notes:
 
-## Known Issues
+- SQLite data is persisted in the named Docker volume `backend_data`.
+- The frontend container proxies `/api/*` to the backend container.
+- Stop stack with `docker compose down`.
 
-This is a POC. Known items to address:
+## Frontend Scripts
 
-- Claude API calls are synchronous and block the event loop during transformation — needs async client
-- Level distribution for very short texts doesn't span the full 0-7 range
-- Markdown export footnotes lack inline references
-- No real authentication (user dropdown only)
+```bash
+cd frontend
+npm run dev
+npm run lint
+npm run build
+npm run preview
+```
+
+## Core Workflow
+
+1. Select a seeded user (or run assessment).
+2. Create a project with source text (up to 5000 words).
+3. Choose source and target languages.
+4. Start transformation and monitor progress in the processing page.
+5. Open completed or in-progress levels in the reader.
+6. Review vocabulary in dictionary and jump directly to usage context.
+7. Export completed projects as PDF/MD/EPUB.
+
+## Level Model (0-7)
+
+- Level `0`: source text
+- Levels `1-5`: incremental code-switching and guided grammar transition
+- Level `6`: high target-language coverage with graded-reader constraints
+- Level `7`: natural target-language output
+
+## API Overview
+
+Swagger docs: `http://localhost:8000/docs`
+
+Common endpoints:
+
+- `GET /api/health`
+- `GET /api/users`
+- `PUT /api/users/{user_id}`
+- `POST /api/assessment/start`
+- `POST /api/assessment/{session_id}/message`
+- `GET /api/projects?user_id=...`
+- `POST /api/projects`
+- `POST /api/projects/{project_id}/transform`
+- `GET /api/projects/{project_id}/job`
+- `GET /api/jobs/{job_id}`
+- `GET /api/projects/{project_id}/chapters`
+- `GET /api/projects/{project_id}/chapters/{chapter_num}`
+- `GET /api/dictionary?user_id=...`
+- `POST /api/projects/{project_id}/chat/message`
+- `POST /api/projects/{project_id}/comprehension/generate`
+- `POST /api/projects/{project_id}/comprehension/evaluate`
+- `GET /api/projects/{project_id}/export/pdf`
+- `GET /api/projects/{project_id}/export/md`
+- `GET /api/projects/{project_id}/export/epub`
+
+## Notes
+- This is a POC!
+- This project currently uses seeded users and does not implement production authentication/authorization.
+- Transformation quality and speed depend on Anthropic API availability and model behavior.
