@@ -92,11 +92,9 @@ cd frontend
 npm run dev
 ```
 
-On first backend startup, the app initializes the database and seeds 3 users:
+On first backend startup, the app initializes the database and seeds a test user.
 
-- `Beginner`
-- `Intermediate`
-- `Advanced`
+If a preseed artifact exists at `backend/artifacts/a-scandal-in-bohemia.json`, that user is automatically populated with pre-transformed "A Scandal in Bohemia" projects from the artifact.
 
 ## Run with Docker
 
@@ -117,6 +115,35 @@ Notes:
 - SQLite data is persisted in the named Docker volume `backend_data`.
 - The frontend container proxies `/api/*` to the backend container.
 - Stop stack with `docker compose down`.
+
+## Preseeded Sample Artifact
+
+Use this to generate and keep reusable sample transformations for all target languages from:
+
+- `samples/a-scandal-in-bohemia.md`
+
+Generate/update artifact:
+
+```bash
+cd backend
+source .venv/bin/activate
+python scripts/generate_scandal_artifact.py
+```
+
+Notes:
+
+- Default output: `backend/artifacts/a-scandal-in-bohemia.json`
+- Default run scope: all target languages except source language (`en`)
+- The script calls Claude for each language and can take significant time/cost.
+- Re-run with `--force` to rebuild existing language entries.
+- Limit run to specific languages with `--languages es,fr,ja`.
+- If your backend is running, stop it first (or run generation with a separate DB URL, for example `DATABASE_URL=sqlite+aiosqlite:///./data/preseed-build.db`).
+
+Startup behavior:
+
+- `backend/seed.py` always attempts to load this artifact.
+- If present and valid, projects/chapters are upserted into the `Sample Library` user.
+- If missing, startup logs "Preseed skipped" and continues normally.
 
 ## Frontend Scripts
 

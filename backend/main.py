@@ -12,7 +12,7 @@ from services.transformer import recover_incomplete_jobs
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
-    await seed()
+    await seed(reset_users=False, prune_missing=False)
     await recover_incomplete_jobs(async_session)
     yield
 

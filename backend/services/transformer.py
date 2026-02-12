@@ -19,6 +19,7 @@ import asyncio
 import logging
 import re
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import List, Tuple
 
 from sqlalchemy import delete, select
@@ -33,6 +34,11 @@ from services.claude import transform_chunk
 from prompts.levels import build_transform_prompt
 
 logger = logging.getLogger(__name__)
+
+try:
+    import fcntl  # Unix file locking for cross-process transformation safety.
+except ImportError:  # pragma: no cover
+    fcntl = None
 
 # Target size for model call chunks inside each level segment.
 MAX_CHUNK_WORDS = 250
@@ -51,6 +57,8 @@ _ANNOTATION_TOLERANT_RE = re.compile(
     r"\{\{([^|]+)\|\}?([^|}]+)(?:\|\}?([^}]*))?\}\}?"
 )
 
+_LOCK_DIR = Path(__file__).resolve().parent.parent / "data" / ".locks"
+
 
 async def run_transformation_guarded(project_id: str, job_id: str, db_factory):
     """Run one job at a time per job_id and make recovery scheduling idempotent."""
@@ -61,6 +69,33 @@ async def run_transformation_guarded(project_id: str, job_id: str, db_factory):
         await run_transformation(project_id, job_id, db_factory)
     finally:
         ACTIVE_JOB_IDS.discard(job_id)
+
+
+async def _acquire_project_lock(project_id: str):
+    """Acquire an exclusive cross-process lock for one project transformation."""
+    if fcntl is None:
+        return None
+
+    _LOCK_DIR.mkdir(parents=True, exist_ok=True)
+    lock_path = _LOCK_DIR / f"transform-{project_id}.lock"
+    lock_file = lock_path.open("a+")
+
+    while True:
+        try:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return lock_file
+        except BlockingIOError:
+            await asyncio.sleep(0.2)
+
+
+def _release_project_lock(lock_file) -> None:
+    if lock_file is None:
+        return
+    try:
+        if fcntl is not None:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+    finally:
+        lock_file.close()
 
 
 async def recover_incomplete_jobs(db_factory):
@@ -506,21 +541,22 @@ async def run_transformation(project_id: str, job_id: str, db_factory):
     - Split source into exactly 7 contiguous segments (levels 1..7) using weighted sizing.
     - Transform each segment at its assigned level and persist as Chapter[level].
     """
-    async with db_factory() as db:
-        project = await db.get(Project, project_id)
-        job = await db.get(TransformationJob, job_id)
-        if not project or not job:
-            return
+    project_lock = await _acquire_project_lock(project_id)
+    try:
+        async with db_factory() as db:
+            project = await db.get(Project, project_id)
+            job = await db.get(TransformationJob, job_id)
+            if not project or not job:
+                return
 
-        vocab_tracker = VocabularyTracker.from_dict(project.vocabulary)
+            vocab_tracker = VocabularyTracker.from_dict(project.vocabulary)
 
-        project.status = "processing"
-        job.status = "processing"
-        job.error_message = None
-        job.completed_at = None
-        await db.commit()
+            project.status = "processing"
+            job.status = "processing"
+            job.error_message = None
+            job.completed_at = None
+            await db.commit()
 
-        try:
             # Always rebuild chapters from scratch for this job.
             await db.execute(delete(Chapter).where(Chapter.project_id == project_id))
             await db.commit()
@@ -752,11 +788,18 @@ async def run_transformation(project_id: str, job_id: str, db_factory):
             job.completed_at = datetime.now(timezone.utc)
             job.completed_chapters = job.total_chapters
             await db.commit()
-
-        except Exception as e:
-            logger.error("Transformation failed for project %s: %s", project_id, e)
-            job.status = "failed"
-            job.error_message = str(e)
-            job.completed_at = datetime.now(timezone.utc)
-            project.status = "failed"
-            await db.commit()
+    except Exception as e:
+        logger.error("Transformation failed for project %s: %s", project_id, e)
+        async with db_factory() as db:
+            job = await db.get(TransformationJob, job_id)
+            project = await db.get(Project, project_id)
+            if job:
+                job.status = "failed"
+                job.error_message = str(e)
+                job.completed_at = datetime.now(timezone.utc)
+            if project:
+                project.status = "failed"
+            if job or project:
+                await db.commit()
+    finally:
+        _release_project_lock(project_lock)

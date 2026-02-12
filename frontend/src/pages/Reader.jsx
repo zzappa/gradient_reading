@@ -93,6 +93,7 @@ export default function Reader() {
   const [sideBySide, setSideBySide] = useState(false);
   const [rightLevel, setRightLevel] = useState(1);
   const [showNativeScript, setShowNativeScript] = useState(false);
+  const [dismissedCongrats, setDismissedCongrats] = useState(false);
   const [focusedTermKey, setFocusedTermKey] = useState(null);
   const [cardFeedback, setCardFeedback] = useState({});
   const textPanelRef = useRef(null);
@@ -329,6 +330,12 @@ export default function Reader() {
   // Check if all levels are read
   const allLevelsRead = chapters.length > 0 &&
     chapters.filter((c) => c.chapter_num !== 0).every((c) => readChapters.includes(c.chapter_num));
+
+  useEffect(() => {
+    if (!allLevelsRead) {
+      setDismissedCongrats(false);
+    }
+  }, [allLevelsRead]);
 
   if (loading) {
     return (
@@ -725,9 +732,19 @@ export default function Reader() {
       </div>
 
       {/* Congratulations banner */}
-      {allLevelsRead && (
+      {allLevelsRead && !dismissedCongrats && (
         <div className="border-t border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-900/20 px-6 py-4">
-          <div className="max-w-2xl mx-auto text-center">
+          <div className="max-w-2xl mx-auto text-center relative">
+            <button
+              type="button"
+              aria-label="Dismiss congratulations"
+              onClick={() => setDismissedCongrats(true)}
+              className="absolute right-0 top-0 p-1 rounded text-emerald-700/70 hover:text-emerald-800 dark:text-emerald-300/80 dark:hover:text-emerald-200"
+            >
+              <svg viewBox="0 0 20 20" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M5 5l10 10M15 5L5 15" />
+              </svg>
+            </button>
             <p className="text-lg font-semibold text-emerald-700 dark:text-emerald-300">
               Congratulations! You've read all levels.
             </p>
