@@ -14,6 +14,8 @@ import {
   saveFlashcards,
 } from '../utils/flashcards';
 import { nameFor } from '../languages';
+import { useUser } from '../context/UserContext';
+import { levelToCefr } from '../utils/cefr';
 import { isSupported as speechSupported, speak, speakTerm, stop } from '../utils/speech';
 
 function escapeRegExp(text) {
@@ -207,6 +209,7 @@ function defaultQuestion(card) {
 }
 
 export default function Flashcards() {
+  const { currentUser } = useUser();
   const [cards, setCards] = useState([]);
   const [mode, setMode] = useState('due');
   const [currentId, setCurrentId] = useState(null);
@@ -376,12 +379,16 @@ export default function Flashcards() {
     setChatSending(true);
     try {
       const level = Number.isFinite(chatCard.firstChapter) ? chatCard.firstChapter : 7;
+      const cefr = chatCard.language && currentUser?.levels?.[chatCard.language] != null
+        ? levelToCefr(currentUser.levels[chatCard.language])
+        : null;
       const data = await sendReaderChat(
         chatCard.projectId,
         message,
         level,
         cardContext(chatCard),
-        history
+        history,
+        cefr
       );
       setActiveChatMessages((prev) => [...prev, { role: 'assistant', content: data.response }]);
     } catch (err) {

@@ -1,6 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { getProject, getChapters, getChapter, getExportUrl } from '../api/client';
+import { useUser } from '../context/UserContext';
+import { levelToCefr } from '../utils/cefr';
+import {
+  createFlashcardFromTerm,
+  upsertFlashcard,
+} from '../utils/flashcards';
 import Flag from '../components/ui/Flag';
 import AnnotatedParagraph from '../components/reader/AnnotatedParagraph';
 import ReaderChat from '../components/reader/ReaderChat';
@@ -8,6 +14,7 @@ import SideBySideView from '../components/reader/SideBySideView';
 import ComprehensionQuiz from '../components/reader/ComprehensionQuiz';
 import Spinner from '../components/ui/Spinner';
 import Button from '../components/ui/Button';
+import Card from '../components/ui/Card';
 import { speak, stop, isSupported as speechSupported } from '../utils/speech';
 import { LANGUAGES } from '../languages';
 
@@ -65,6 +72,7 @@ function setReaderState(projectId, patch) {
 export default function Reader() {
   const { projectId } = useParams();
   const navigate = useNavigate();
+  const { currentUser } = useUser();
   const [searchParams] = useSearchParams();
   const chapterQuery = searchParams.get('chapter');
   const termQuery = searchParams.get('term');
@@ -86,6 +94,7 @@ export default function Reader() {
   const [rightLevel, setRightLevel] = useState(1);
   const [showNativeScript, setShowNativeScript] = useState(false);
   const [focusedTermKey, setFocusedTermKey] = useState(null);
+  const [cardFeedback, setCardFeedback] = useState({});
   const textPanelRef = useRef(null);
   const footnotePanelRef = useRef(null);
   const restoreScrollRef = useRef(null);
@@ -332,6 +341,9 @@ export default function Reader() {
   const isOriginal = currentNum === 0;
   const levelLabel = isOriginal ? 'Original' : `Level ${currentNum}`;
   const targetScript = LANGUAGES[project?.target_language || 'en']?.script || 'latin';
+  const userCefr = project && currentUser?.levels?.[project.target_language] != null
+    ? levelToCefr(currentUser.levels[project.target_language])
+    : null;
   const activeLevelForScriptToggle = sideBySide ? rightLevel : currentNum;
   const canToggleNativeScript = targetScript !== 'latin' && activeLevelForScriptToggle >= 6;
   const forceNativeScript = canToggleNativeScript && showNativeScript;
@@ -637,6 +649,7 @@ export default function Reader() {
             onClose={() => setChatOpen(false)}
             messages={chatMessages}
             setMessages={setChatMessages}
+            userCefr={userCefr}
           />
         )}
 

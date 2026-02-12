@@ -13,7 +13,9 @@ from languages import get_language, get_source_language_name
 router = APIRouter(prefix="/api/projects", tags=["reader-chat"])
 
 
-def _build_reader_chat_prompt(project: Project, level: int, context_paragraph: str | None) -> str:
+def _build_reader_chat_prompt(
+    project: Project, level: int, context_paragraph: str | None, user_cefr: str | None = None
+) -> str:
     lang = get_language(project.target_language)
     lang_name = lang["name"]
     source_name = get_source_language_name(getattr(project, "source_language", "en"))
@@ -23,7 +25,14 @@ def _build_reader_chat_prompt(project: Project, level: int, context_paragraph: s
 
     prompt = f"""You are a friendly language learning assistant for the Gradient Immersion method.
 The user is reading a text being transformed from {source_name} to {lang_name}.
-They are currently at Level {level} of 7.
+They are currently at Level {level} of 7."""
+
+    if user_cefr:
+        prompt += f"""
+Their assessed proficiency is {user_cefr}. Adapt your explanations to this level —
+use simpler terms and more {source_name} for beginners, more {lang_name} for advanced learners."""
+
+    prompt += f"""
 
 Known vocabulary at this point:
 {known}
@@ -54,7 +63,7 @@ async def reader_chat(
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    system_prompt = _build_reader_chat_prompt(project, data.level, data.context_paragraph)
+    system_prompt = _build_reader_chat_prompt(project, data.level, data.context_paragraph, data.user_cefr)
 
     # Build messages list from history + current message
     messages = []

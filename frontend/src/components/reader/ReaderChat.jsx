@@ -38,6 +38,7 @@ export default function ReaderChat({
   onClose,
   messages,
   setMessages,
+  userCefr,
 }) {
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
@@ -59,7 +60,7 @@ export default function ReaderChat({
     setSending(true);
 
     try {
-      const data = await sendReaderChat(projectId, userMsg, currentLevel, null, messages);
+      const data = await sendReaderChat(projectId, userMsg, currentLevel, null, messages, userCefr);
       setMessages((prev) => [...prev, { role: 'assistant', content: data.response }]);
     } catch {
       setMessages((prev) => [
@@ -69,7 +70,7 @@ export default function ReaderChat({
     } finally {
       setSending(false);
     }
-  }, [messages, setMessages, projectId, currentLevel]);
+  }, [messages, setMessages, projectId, currentLevel, userCefr]);
 
   // Handle initialMessage (from double-click) — guard against duplicate sends
   useEffect(() => {

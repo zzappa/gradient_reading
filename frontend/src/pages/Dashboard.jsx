@@ -135,7 +135,7 @@ export default function Dashboard() {
     <PageLayout>
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="font-serif text-3xl font-semibold">Projects</h1>
+          <h1 className="font-serif text-3xl font-semibold">Dashboard</h1>
           <p className="text-sm text-text-muted mt-1">
             {currentUser.name}
             {levelEntries.length > 0 && (
@@ -150,7 +150,6 @@ export default function Dashboard() {
             )}
           </p>
         </div>
-        <Button onClick={() => navigate('/project/new')}>New project</Button>
       </div>
 
       {loading ? (
@@ -163,7 +162,69 @@ export default function Dashboard() {
         </div>
       ) : (
         <>
-          {/* Projects list */}
+          {/* Assessment */}
+          <div className="mb-10">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-serif text-xl font-semibold">Assessment</h2>
+              <Button variant="secondary" onClick={() => navigate('/assessment')}>
+                New assessment
+              </Button>
+            </div>
+            {assessments.length === 0 ? (
+              <Card className="p-5">
+                <p className="text-sm text-text-muted">
+                  Take an assessment to determine your proficiency level. This helps
+                  the app tailor content and chat responses to your ability.
+                </p>
+              </Card>
+            ) : (
+              <div className="space-y-2">
+                {assessments.map((s) => (
+                  <div
+                    key={s.id}
+                    className="w-full px-4 py-3 rounded-lg bg-surface hover:bg-border/50 transition-colors"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <button
+                        onClick={() => navigate(`/assessment?session=${s.id}`)}
+                        className="flex-1 text-left"
+                      >
+                        <span className="text-sm">
+                          <Flag code={s.target_language} size="sm" /> {nameFor(s.target_language)}{' '}
+                          <span className="text-text-muted">
+                            &middot; {new Date(s.created_at).toLocaleDateString()}
+                          </span>
+                        </span>
+                        <div className="text-xs mt-0.5">
+                          {s.completed ? (
+                            <span className="text-emerald-600">
+                              CEFR {s.result_cefr || levelToCefr(s.result_level)}
+                            </span>
+                          ) : (
+                            <span className="text-text-muted">In progress</span>
+                          )}
+                        </div>
+                      </button>
+                      <button
+                        onClick={() => handleDeleteAssessment(s.id)}
+                        disabled={deletingAssessmentId === s.id}
+                        className="text-xs text-text-muted hover:text-red-600 disabled:opacity-50"
+                      >
+                        {deletingAssessmentId === s.id ? 'Deleting...' : 'Delete'}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Projects */}
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-serif text-xl font-semibold">Projects</h2>
+            <Button onClick={() => navigate('/project/new')}>New project</Button>
+          </div>
+
           <div className="mb-4">
             <input
               type="text"
@@ -186,7 +247,7 @@ export default function Dashboard() {
               <p className="text-text-muted">No projects match your search.</p>
             </div>
           ) : (
-            <div className="space-y-3 mb-12">
+            <div className="space-y-3">
               {filteredProjects.map((project) => (
                 <Card key={project.id} className="p-5">
                   <div className="flex items-center justify-between">
@@ -255,56 +316,6 @@ export default function Dashboard() {
                   </div>
                 </Card>
               ))}
-            </div>
-          )}
-
-          {/* Assessment history */}
-          {assessments.length > 0 && (
-            <div>
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="font-serif text-xl font-semibold">Assessment history</h2>
-                <Button variant="secondary" onClick={() => navigate('/assessment')}>
-                  New assessment
-                </Button>
-              </div>
-              <div className="space-y-2">
-                {assessments.map((s) => (
-                  <div
-                    key={s.id}
-                    className="w-full px-4 py-3 rounded-lg bg-surface hover:bg-border/50 transition-colors"
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <button
-                        onClick={() => navigate(`/assessment?session=${s.id}`)}
-                        className="flex-1 text-left"
-                      >
-                        <span className="text-sm">
-                          <Flag code={s.target_language} size="sm" /> {nameFor(s.target_language)}{' '}
-                          <span className="text-text-muted">
-                            &middot; {new Date(s.created_at).toLocaleDateString()}
-                          </span>
-                        </span>
-                        <div className="text-xs mt-0.5">
-                          {s.completed ? (
-                            <span className="text-emerald-600">
-                              CEFR {s.result_cefr || levelToCefr(s.result_level)}
-                            </span>
-                          ) : (
-                            <span className="text-text-muted">In progress</span>
-                          )}
-                        </div>
-                      </button>
-                      <button
-                        onClick={() => handleDeleteAssessment(s.id)}
-                        disabled={deletingAssessmentId === s.id}
-                        className="text-xs text-text-muted hover:text-red-600 disabled:opacity-50"
-                      >
-                        {deletingAssessmentId === s.id ? 'Deleting...' : 'Delete'}
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
             </div>
           )}
         </>
