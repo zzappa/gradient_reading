@@ -48,6 +48,12 @@ export default function Header() {
               >
                 Dictionary
               </Link>
+              <Link
+                to="/flashcards"
+                className="text-sm text-text-muted hover:text-text no-underline"
+              >
+                Flashcards
+              </Link>
             </>
           )}
 

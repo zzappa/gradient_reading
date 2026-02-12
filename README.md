@@ -11,6 +11,7 @@ Readers can move level-by-level from source-heavy text to target-language text w
 - 0-7 graded output with inline annotations and footnotes
 - Reader with notes, side-by-side compare mode, chat, quiz, and TTS
 - Dictionary view across projects with direct context deep links
+- Anki-style flashcard review with multiple card schemas
 - Export to PDF, Markdown, and EPUB
 - Assessment flow that updates a user's starting level per language
 
@@ -135,7 +136,8 @@ npm run preview
 4. Start transformation and monitor progress in the processing page.
 5. Open completed or in-progress levels in the reader.
 6. Review vocabulary in dictionary and jump directly to usage context.
-7. Export completed projects as PDF/MD/EPUB.
+7. Create flashcards from dictionary terms and review them in the flashcard trainer.
+8. Export completed projects as PDF/MD/EPUB.
 
 ## Level Model (0-7)
 
@@ -143,6 +145,39 @@ npm run preview
 - Levels `1-5`: incremental code-switching and guided grammar transition
 - Level `6`: high target-language coverage with graded-reader constraints
 - Level `7`: natural target-language output
+
+## Flashcard Scheduling
+
+The flashcards feature is **Anki-style**, but it does **not** implement Anki's full scheduler.
+
+Current implementation (`frontend/src/utils/flashcards.js`) is a lightweight SM-2-like model with local storage:
+
+- Ratings: `Again`, `Hard`, `Good`, `Easy`
+- Per-card stats: `interval` (days), `ease` (starts at `2.5`), `repetitions`
+- Minimum ease floor: `1.3`
+
+Review behavior:
+
+- `Again`: decreases ease by `0.2`, resets interval to `0`, next review in `5 minutes`
+- `Hard`: decreases ease by `0.15`, uses `1 day` minimum, otherwise `interval * 1.2`
+- `Good`: uses `1 day` minimum, otherwise `interval * ease`
+- `Easy`: increases ease by `0.15`, uses `2 days` minimum, otherwise `interval * ease * 1.3`
+
+This means the current trainer is intentionally simple and predictable. It is not FSRS and does not perform parameter optimization from review history.
+
+## Anki/Open-Source Note
+
+- Anki itself is open source and its source repository is licensed under **AGPL-3.0-or-later**.
+- Anki docs describe FSRS as an alternative to Anki's legacy SM-2 scheduler.
+- This project currently uses an independent scheduler implementation and does not copy Anki source code.
+
+If you copy or adapt Anki source code directly, AGPL obligations apply (for example, sharing source for networked deployments of modified AGPL code).
+
+References:
+
+- Anki source license: https://github.com/ankitects/anki/blob/main/LICENSE
+- Anki docs (Deck Options / FSRS): https://docs.ankiweb.net/deck-options.html#fsrs
+- Anki project site (open-source/free desktop app): https://apps.ankiweb.net/
 
 ## API Overview
 
