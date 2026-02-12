@@ -2,7 +2,13 @@ import { useState, useRef, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import { useUser } from '../context/UserContext';
-import { startAssessment, sendAssessmentMessage, getAssessments, getAssessment } from '../api/client';
+import {
+  startAssessment,
+  sendAssessmentMessage,
+  getAssessments,
+  getAssessment,
+  deleteAssessment,
+} from '../api/client';
 import { LANGUAGE_LIST, nameFor } from '../languages';
 import Flag from '../components/ui/Flag';
 import Button from '../components/ui/Button';
@@ -15,7 +21,6 @@ export default function Assessment() {
   const [searchParams] = useSearchParams();
   const resumeId = searchParams.get('session');
 
-  const [selectedLang, setSelectedLang] = useState(null);
   const [sessionId, setSessionId] = useState(null);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
@@ -25,6 +30,7 @@ export default function Assessment() {
   const [sessionLang, setSessionLang] = useState(null);
   const [history, setHistory] = useState([]);
   const [showHistory, setShowHistory] = useState(!resumeId);
+  const [deletingHistoryId, setDeletingHistoryId] = useState(null);
   const bottomRef = useRef(null);
 
   // Load assessment history
@@ -60,7 +66,6 @@ export default function Assessment() {
 
   function startNew(langCode) {
     if (!currentUser || !langCode) return;
-    setSelectedLang(null);
     setShowHistory(false);
     setMessages([]);
     setCompleted(false);
@@ -87,6 +92,19 @@ export default function Assessment() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  async function handleDeleteHistory(sessionIdToDelete) {
+    if (!window.confirm('Delete this assessment session?')) return;
+    setDeletingHistoryId(sessionIdToDelete);
+    try {
+      await deleteAssessment(sessionIdToDelete);
+      setHistory((prev) => prev.filter((s) => s.id !== sessionIdToDelete));
+    } catch (err) {
+      console.error('Failed to delete assessment:', err);
+    } finally {
+      setDeletingHistoryId(null);
+    }
+  }
 
   async function handleSend(e) {
     e.preventDefault();
@@ -130,7 +148,7 @@ export default function Assessment() {
   }
 
   // Language selection screen
-  if (showHistory && !sessionId && !selectedLang) {
+  if (showHistory && !sessionId) {
     return (
       <PageLayout>
         <div className="flex items-center justify-between mb-6">
@@ -177,27 +195,38 @@ export default function Assessment() {
             <h2 className="text-sm font-medium text-text-muted mb-3">Past assessments</h2>
             <div className="space-y-2">
               {history.map((s) => (
-                <button
+                <div
                   key={s.id}
-                  onClick={() => navigate(`/assessment?session=${s.id}`)}
-                  className="w-full text-left px-4 py-3 rounded-lg bg-surface hover:bg-border/50 transition-colors"
+                  className="w-full px-4 py-3 rounded-lg bg-surface hover:bg-border/50 transition-colors"
                 >
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm">
-                      <Flag code={s.target_language} size="sm" /> {nameFor(s.target_language)}{' '}
-                      <span className="text-text-muted">
-                        &middot; {new Date(s.created_at).toLocaleDateString()}
+                  <div className="flex items-center justify-between gap-3">
+                    <button
+                      onClick={() => navigate(`/assessment?session=${s.id}`)}
+                      className="flex-1 text-left"
+                    >
+                      <span className="text-sm">
+                        <Flag code={s.target_language} size="sm" /> {nameFor(s.target_language)}{' '}
+                        <span className="text-text-muted">
+                          &middot; {new Date(s.created_at).toLocaleDateString()}
+                        </span>
                       </span>
-                    </span>
-                    <span className="text-xs">
-                      {s.completed ? (
-                        <span className="text-emerald-600">Level {s.result_level}</span>
-                      ) : (
-                        <span className="text-text-muted">In progress</span>
-                      )}
-                    </span>
+                      <div className="text-xs mt-0.5">
+                        {s.completed ? (
+                          <span className="text-emerald-600">Level {s.result_level}</span>
+                        ) : (
+                          <span className="text-text-muted">In progress</span>
+                        )}
+                      </div>
+                    </button>
+                    <button
+                      onClick={() => handleDeleteHistory(s.id)}
+                      disabled={deletingHistoryId === s.id}
+                      className="text-xs text-text-muted hover:text-red-600 disabled:opacity-50"
+                    >
+                      {deletingHistoryId === s.id ? 'Deleting...' : 'Delete'}
+                    </button>
                   </div>
-                </button>
+                </div>
               ))}
             </div>
           </div>

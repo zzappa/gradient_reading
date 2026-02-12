@@ -12,6 +12,7 @@ export default function SideBySideView({
   fontClass,
   onTermDoubleClick,
   focusedTermKey,
+  showNativeScript = false,
 }) {
   const [originalChapter, setOriginalChapter] = useState(null);
   const [transformedChapter, setTransformedChapter] = useState(null);
@@ -137,6 +138,7 @@ export default function SideBySideView({
                   sourceLangCode={sourceLangCode}
                   level={rightLevel}
                   focusedTermKey={focusedTermKey}
+                  forceNativeScript={showNativeScript && rightLevel >= 6}
                 />
               )}
             </div>

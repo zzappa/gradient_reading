@@ -1,21 +1,18 @@
 """
-Transformation orchestration — progressive ramp across the book.
+Transformation orchestration — progressive 7-part ramp across the book.
 
-- Split the source into paragraph-respecting chunks (~MAX_CHUNK_WORDS).
-- Assign each chunk a single difficulty level on a monotone schedule (Level 1 -> ... -> Level 7).
-- Transform each chunk ONCE at its assigned level.
-- Persist results as Chapters keyed by level (chapter_num == level), where each chapter contains
-  the contiguous segment of the story produced at that level.
-- Chapter 0 remains the full raw source text (unchanged).
+- Split source text into exactly seven contiguous story segments (levels 1..7).
+- Segment sizes are weighted so levels 1-2 are shorter and levels 3-5 are longer.
+- Transform each segment at its assigned level once.
+- Persist one chapter per level (chapter_num == level), plus chapter 0 (raw source).
 
-Paragraph-length variability handling:
-- Chunks are built on paragraph boundaries (as before).
-- If a single paragraph is too large for one model call, it is processed in sentence-batches
-  and then stitched back into ONE output paragraph (so paragraph structure is preserved).
+Paragraph-length variability handling for model calls:
+- Within each level segment, text is sent in paragraph-respecting call chunks.
+- If a paragraph is too large for one call, it is sentence-batched and stitched back.
 
 Notes:
-- Context is carried forward for continuity via [[CONTINUITY_CONTEXT]] only.
-- VocabularyTracker is updated progressively so terms stabilize across later chunks.
+- Continuity context is carried forward via [[CONTINUITY_CONTEXT]].
+- VocabularyTracker is updated progressively so terminology remains stable.
 """
 
 import asyncio
@@ -37,7 +34,7 @@ from prompts.levels import build_transform_prompt
 
 logger = logging.getLogger(__name__)
 
-# Target size for story chunks that advance the level schedule
+# Target size for model call chunks inside each level segment.
 MAX_CHUNK_WORDS = 250
 # Safety cap for a single model call. If exceeded, we fall back to per-paragraph or sentence-batched calls.
 MAX_CALL_WORDS = 900
@@ -45,7 +42,9 @@ MAX_CALL_WORDS = 900
 # Continuity context size (rolling tail)
 CONTEXT_TAIL_WORDS = 140
 
-MIN_CHUNKS_PER_BOOK = 14
+# Weighted distribution for level segments 1..7.
+# 1-2 are shorter; 3-5 are longer.
+LEVEL_SEGMENT_WEIGHTS = [0.7, 0.8, 1.25, 1.3, 1.25, 0.95, 0.75]
 ACTIVE_JOB_IDS: set[str] = set()
 
 
@@ -82,68 +81,103 @@ def _word_count(text: str) -> int:
     return len(text.split())
 
 
-def _smoothstep(x: float) -> float:
-    """Easing: slow start, faster mid, slow end. Monotone on [0, 1]."""
-    if x <= 0.0:
-        return 0.0
-    if x >= 1.0:
-        return 1.0
-    return x * x * (3.0 - 2.0 * x)
+def _expand_units_for_levels(paragraphs: list[str], min_units: int = 7) -> list[str]:
+    """Best-effort split into at least min_units contiguous units (sentence-based when needed)."""
+    units = [p for p in paragraphs if (p or "").strip()]
+    if len(units) >= min_units:
+        return units
+
+    while len(units) < min_units:
+        split_idx = -1
+        split_left = ""
+        split_right = ""
+        split_words = 0
+
+        for idx, unit in enumerate(units):
+            sentences = [s.strip() for s in _SENT_SPLIT_RE.split(unit.strip()) if s.strip()]
+            if len(sentences) < 2:
+                continue
+
+            mid = len(sentences) // 2
+            left = " ".join(sentences[:mid]).strip()
+            right = " ".join(sentences[mid:]).strip()
+            if not left or not right:
+                continue
+
+            words = _word_count(unit)
+            if words > split_words:
+                split_idx = idx
+                split_left = left
+                split_right = right
+                split_words = words
+
+        if split_idx < 0:
+            break
+
+        units = units[:split_idx] + [split_left, split_right] + units[split_idx + 1:]
+
+    return units
 
 
-def _level_schedule(num_chunks: int) -> list[int]:
-    """
-    Monotone schedule with minimal skipping.
+def _split_into_level_segments(
+    paragraphs: list[str],
+    level_weights: list[float] | None = None,
+) -> List[Tuple[int, list[str]]]:
+    """Split source units into 7 contiguous level segments using weighted targets."""
+    weights = level_weights or LEVEL_SEGMENT_WEIGHTS
+    num_levels = len(weights)
 
-    Properties:
-    - Always starts at 1 and ends at 7 (unless num_chunks==0).
-    - If num_chunks >= 7 => includes every level 1..7 at least once.
-    - If num_chunks < 7 => distributes levels as evenly as possible (no big early duplicates).
-      Example: num_chunks=5 => [1,2,3,5,7]
-    """
-    if num_chunks <= 0:
-        return []
-    if num_chunks == 1:
-        return [7]
+    if num_levels != 7:
+        raise ValueError("Expected exactly 7 level weights.")
 
-    levels: list[int] = []
-    for i in range(num_chunks):
-        # Bucket chunks into 7 level-bins uniformly across the book.
-        # i * 7 / num_chunks yields 0..(7-ε), floor => 0..6.
-        lvl = 1 + int((i * 7) / num_chunks)
-        if lvl < 1:
-            lvl = 1
-        if lvl > 7:
-            lvl = 7
-        levels.append(lvl)
+    if not paragraphs:
+        return [(level, []) for level in range(1, num_levels + 1)]
 
-    # Force last to 7
-    levels[-1] = 7
+    n = len(paragraphs)
+    if n < num_levels:
+        segments: List[Tuple[int, list[str]]] = []
+        for level in range(1, num_levels + 1):
+            para = [paragraphs[level - 1]] if level <= n else []
+            segments.append((level, para))
+        return segments
 
-    # Enforce monotonicity (defensive)
-    for i in range(1, len(levels)):
-        if levels[i] < levels[i - 1]:
-            levels[i] = levels[i - 1]
+    para_weights = [_word_count(p) for p in paragraphs]
+    if sum(para_weights) == 0:
+        para_weights = [1] * n
 
-    return levels
+    prefix = [0]
+    for w in para_weights:
+        prefix.append(prefix[-1] + w)
 
+    total_weight = sum(weights)
+    targets = []
+    running_weight = 0.0
+    for idx in range(num_levels - 1):
+        running_weight += weights[idx]
+        targets.append((running_weight / total_weight) * prefix[-1])
 
-def _group_by_level(levels: List[int]) -> List[Tuple[int, int, int]]:
-    """
-    Given a per-chunk level list, return contiguous segments as tuples:
-      (level, start_idx_inclusive, end_idx_exclusive)
-    """
-    if not levels:
-        return []
-    segments: List[Tuple[int, int, int]] = []
-    cur_level = levels[0]
+    boundaries: list[int] = []
+    prev = 0
+    for boundary_idx, target in enumerate(targets, start=1):
+        remaining_segments = num_levels - boundary_idx
+        min_cut = prev + 1
+        max_cut = n - remaining_segments
+        if min_cut > max_cut:
+            cut = min_cut
+        else:
+            cut = min(
+                range(min_cut, max_cut + 1),
+                key=lambda i: (abs(prefix[i] - target), i),
+            )
+        boundaries.append(cut)
+        prev = cut
+
+    segments: List[Tuple[int, list[str]]] = []
     start = 0
-    for i, lvl in enumerate(levels):
-        if lvl != cur_level:
-            segments.append((cur_level, start, i))
-            cur_level = lvl
-            start = i
-    segments.append((cur_level, start, len(levels)))
+    for level, end in enumerate(boundaries + [n], start=1):
+        segments.append((level, paragraphs[start:end]))
+        start = end
+
     return segments
 
 
@@ -415,10 +449,8 @@ async def run_transformation(project_id: str, job_id: str, db_factory):
     """
     Progressive transformation pipeline:
     - Save Chapter 0: full raw source text.
-    - Split source into paragraph chunks.
-    - Assign each chunk a single level (1..7) along the book.
-    - Group contiguous chunks with the same level -> create one Chapter per level segment.
-    - Transform each chunk once at its assigned level and append into that chapter's content.
+    - Split source into exactly 7 contiguous segments (levels 1..7) using weighted sizing.
+    - Transform each segment at its assigned level and persist as Chapter[level].
     """
     async with db_factory() as db:
         project = await db.get(Project, project_id)
@@ -452,16 +484,13 @@ async def run_transformation(project_id: str, job_id: str, db_factory):
             db.add(chapter_0)
             await db.commit()
 
-            # Split into paragraphs and chunks
+            # Split into contiguous source units and assign exactly 7 level segments.
             original_paragraphs = split_into_paragraphs(project.source_text)
-            chunks = _chunk_paragraphs(original_paragraphs)
+            source_units = _expand_units_for_levels(original_paragraphs, min_units=7)
+            segments = _split_into_level_segments(source_units, level_weights=LEVEL_SEGMENT_WEIGHTS)
 
-            # Level schedule & segments
-            chunk_levels = _level_schedule(len(chunks))
-            segments = _group_by_level(chunk_levels)
-
-            # Total chapters = raw + number of level segments (usually <= 7)
-            job.total_chapters = 1 + len(segments)
+            # Total chapters = raw + 7 transformed levels.
+            job.total_chapters = 8
             job.current_chapter = 1
             job.completed_chapters = 1
             await db.commit()
@@ -469,13 +498,12 @@ async def run_transformation(project_id: str, job_id: str, db_factory):
             # Rolling continuity context (tail of prior generated text)
             continuity_tail = ""
 
-            # Process each segment as its own Chapter keyed by level
-            for seg_idx, (level, start_chunk, end_chunk) in enumerate(segments):
+            # Process each level segment as its own Chapter keyed by level.
+            for seg_idx, (level, seg_paras) in enumerate(segments):
                 job.current_chapter = 2 + seg_idx
                 await db.commit()
 
-                seg_chunks = chunks[start_chunk:end_chunk]
-                seg_source_text = "\n\n".join(["\n\n".join(c) for c in seg_chunks]).strip()
+                seg_source_text = "\n\n".join(seg_paras).strip()
 
                 chapter = Chapter(
                     project_id=project_id,
@@ -487,11 +515,21 @@ async def run_transformation(project_id: str, job_id: str, db_factory):
                 db.add(chapter)
                 await db.commit()
 
+                if not seg_paras:
+                    chapter.content = ""
+                    chapter.footnotes = []
+                    chapter.status = "completed"
+                    await db.commit()
+                    job.completed_chapters = 2 + seg_idx
+                    await db.commit()
+                    continue
+
+                seg_chunks = _chunk_paragraphs(seg_paras)
                 chapter_paragraphs: List[str] = []
                 chapter_footnotes: List[dict] = []
                 chapter_failed = False
 
-                for chunk_idx_within_seg, orig_chunk_paras in enumerate(seg_chunks):
+                for orig_chunk_paras in seg_chunks:
                     chunk_text = "\n\n".join(orig_chunk_paras).strip()
                     if not chunk_text:
                         continue
@@ -631,13 +669,13 @@ async def run_transformation(project_id: str, job_id: str, db_factory):
                     chapter.status = "failed"
                     await db.commit()
                     job.status = "failed"
-                    job.error_message = f"Failed while processing level segment {level}."
+                    job.error_message = f"Failed while processing level {level}."
                     job.completed_at = datetime.now(timezone.utc)
                     project.status = "failed"
                     await db.commit()
                     return
 
-                # Finalize this level segment chapter
+                # Finalize this level chapter
                 chapter_footnotes = _enrich_footnotes(chapter_footnotes, vocab_tracker)
                 chapter.content = "\n\n".join(chapter_paragraphs)
                 chapter.footnotes = chapter_footnotes

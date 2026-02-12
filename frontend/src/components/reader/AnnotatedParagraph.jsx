@@ -84,6 +84,7 @@ const AnnotatedParagraph = forwardRef(function AnnotatedParagraph(
     sourceLangCode,
     level,
     focusedTermKey,
+    forceNativeScript = false,
   },
   ref
 ) {
@@ -125,6 +126,7 @@ const AnnotatedParagraph = forwardRef(function AnnotatedParagraph(
               onDoubleClick={onTermDoubleClick}
               langCode={langCode}
               isFocused={focusedTermKey === seg.key.toLowerCase()}
+              forceNativeScript={forceNativeScript}
             />
           )
         )}

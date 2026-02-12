@@ -9,6 +9,7 @@ import ComprehensionQuiz from '../components/reader/ComprehensionQuiz';
 import Spinner from '../components/ui/Spinner';
 import Button from '../components/ui/Button';
 import { speak, stop, isSupported as speechSupported } from '../utils/speech';
+import { LANGUAGES } from '../languages';
 
 const FONT_SIZES = [
   { label: 'A', class: 'text-base', value: 'sm' },
@@ -83,6 +84,7 @@ export default function Reader() {
   const [quizOpen, setQuizOpen] = useState(false);
   const [sideBySide, setSideBySide] = useState(false);
   const [rightLevel, setRightLevel] = useState(1);
+  const [showNativeScript, setShowNativeScript] = useState(false);
   const [focusedTermKey, setFocusedTermKey] = useState(null);
   const textPanelRef = useRef(null);
   const footnotePanelRef = useRef(null);
@@ -96,6 +98,7 @@ export default function Reader() {
     if (typeof savedState.notesOpen === 'boolean') setNotesOpen(hasDeepLink ? true : savedState.notesOpen);
     if (typeof savedState.sideBySide === 'boolean') setSideBySide(hasDeepLink ? false : savedState.sideBySide);
     if (typeof savedState.rightLevel === 'number') setRightLevel(savedState.rightLevel);
+    if (typeof savedState.showNativeScript === 'boolean') setShowNativeScript(savedState.showNativeScript);
     if (typeof termQuery === 'string' && termQuery.trim()) {
       setFocusedTermKey(termQuery.toLowerCase());
     } else {
@@ -188,8 +191,9 @@ export default function Reader() {
       notesOpen,
       sideBySide,
       rightLevel,
+      showNativeScript,
     });
-  }, [projectId, chapters.length, currentNum, fontSize, notesOpen, sideBySide, rightLevel]);
+  }, [projectId, chapters.length, currentNum, fontSize, notesOpen, sideBySide, rightLevel, showNativeScript]);
 
   useEffect(
     () => () => {
@@ -327,6 +331,10 @@ export default function Reader() {
 
   const isOriginal = currentNum === 0;
   const levelLabel = isOriginal ? 'Original' : `Level ${currentNum}`;
+  const targetScript = LANGUAGES[project?.target_language || 'en']?.script || 'latin';
+  const activeLevelForScriptToggle = sideBySide ? rightLevel : currentNum;
+  const canToggleNativeScript = targetScript !== 'latin' && activeLevelForScriptToggle >= 6;
+  const forceNativeScript = canToggleNativeScript && showNativeScript;
 
   return (
     <div className="h-[calc(100vh-3.5rem)] flex flex-col">
@@ -423,6 +431,17 @@ export default function Reader() {
             Notes
           </button>
 
+          {canToggleNativeScript && (
+            <button
+              onClick={() => setShowNativeScript((v) => !v)}
+              className={`text-sm transition-colors ${
+                showNativeScript ? 'text-accent font-medium' : 'text-text-muted hover:text-text'
+              }`}
+            >
+              {showNativeScript ? 'Script: Native' : 'Script: Romanized'}
+            </button>
+          )}
+
           {/* Compare toggle */}
           <button
             onClick={() => {
@@ -455,7 +474,7 @@ export default function Reader() {
               chatOpen ? 'text-accent font-medium' : 'text-text-muted hover:text-text'
             }`}
           >
-            Ask
+            Ask Claude
           </button>
 
           {/* Quiz toggle */}
@@ -519,6 +538,7 @@ export default function Reader() {
             fontClass={currentFontClass}
             onTermDoubleClick={handleTermDoubleClick}
             focusedTermKey={focusedTermKey}
+            showNativeScript={forceNativeScript}
           />
         ) : (
           /* Text panel */
@@ -540,6 +560,7 @@ export default function Reader() {
                     sourceLangCode={project?.source_language || 'en'}
                     level={currentNum}
                     focusedTermKey={focusedTermKey}
+                    forceNativeScript={forceNativeScript}
                   />
                 ))}
               </div>

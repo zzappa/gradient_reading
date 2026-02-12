@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import PageLayout from '../components/layout/PageLayout';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
+import Spinner from '../components/ui/Spinner';
+import { sendReaderChat } from '../api/client';
 import {
   deleteFlashcard,
   formatSchemaLabel,
@@ -128,6 +130,44 @@ function formatDue(value) {
   return `in ${Math.round(delta / (24 * 60 * 60 * 1000))}d`;
 }
 
+function formatDueAbsolute(value) {
+  if (!value) return 'now';
+  const dt = new Date(value);
+  return dt.toLocaleString();
+}
+
+function cardContext(card) {
+  if (!card) return null;
+
+  if (card.schema === 'substitution') {
+    const substitution = card.substitution || {};
+    return [
+      substitution.frontSentence ? `Sentence: ${substitution.frontSentence}` : null,
+      substitution.correctedSentence ? `Reference sentence: ${substitution.correctedSentence}` : null,
+      card.realScript ? `Word in target language: ${card.realScript}` : null,
+      card.translation ? `English meaning: ${card.translation}` : null,
+    ].filter(Boolean).join('\n');
+  }
+
+  return [
+    card.realScript ? `Target word: ${card.realScript}` : null,
+    card.romanization && card.romanization !== card.realScript
+      ? `Romanization: ${card.romanization}`
+      : null,
+    card.ipa ? `IPA: ${card.ipa}` : null,
+    card.translation ? `English: ${card.translation}` : null,
+    card.grammarNote ? `Grammar note: ${card.grammarNote}` : null,
+  ].filter(Boolean).join('\n');
+}
+
+function defaultQuestion(card) {
+  if (!card) return '';
+  if (card.schema === 'substitution') {
+    return 'Explain this sentence and why this target word is used here.';
+  }
+  return `Explain the nuance, grammar, and usage of "${card.realScript || card.term}".`;
+}
+
 export default function Flashcards() {
   const [cards, setCards] = useState([]);
   const [mode, setMode] = useState('due');
@@ -136,6 +176,14 @@ export default function Flashcards() {
   const [nowTick, setNowTick] = useState(0);
   const [editOpen, setEditOpen] = useState(false);
   const [editDraft, setEditDraft] = useState(null);
+  const [listQuery, setListQuery] = useState('');
+
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatCardId, setChatCardId] = useState(null);
+  const [chatInput, setChatInput] = useState('');
+  const [chatSending, setChatSending] = useState(false);
+  const [chatByCard, setChatByCard] = useState({});
+  const chatBottomRef = useRef(null);
 
   useEffect(() => {
     setCards(loadFlashcards());
@@ -149,16 +197,44 @@ export default function Flashcards() {
 
   useEffect(() => () => stop(), []);
 
+  const dueCount = useMemo(() => getDueFlashcards(cards, nowTick).length, [cards, nowTick]);
+
   const queue = useMemo(() => {
+    if (mode === 'list') return [];
     if (mode === 'all') {
       return [...cards].sort((a, b) => (a.dueAt || 0) - (b.dueAt || 0));
     }
     return getDueFlashcards(cards, nowTick);
   }, [cards, mode, nowTick]);
 
+  const allCards = useMemo(
+    () => [...cards].sort((a, b) => (a.dueAt || 0) - (b.dueAt || 0)),
+    [cards]
+  );
+
+  const filteredList = useMemo(() => {
+    const q = listQuery.trim().toLowerCase();
+    if (!q) return allCards;
+    return allCards.filter((c) =>
+      [
+        c.realScript,
+        c.romanization,
+        c.translation,
+        c.term,
+        c.language,
+        formatSchemaLabel(c.schema),
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+        .includes(q)
+    );
+  }, [allCards, listQuery]);
+
   const nextDueAt = useMemo(() => getNextDueAt(cards), [cards]);
 
   useEffect(() => {
+    if (mode === 'list') return;
     if (!queue.length) {
       setCurrentId(null);
       setShowBack(false);
@@ -168,16 +244,37 @@ export default function Flashcards() {
       setCurrentId(queue[0].id);
       setShowBack(false);
     }
-  }, [queue, currentId]);
+  }, [queue, currentId, mode]);
 
   const currentCard = useMemo(
     () => queue.find((c) => c.id === currentId) || null,
     [queue, currentId]
   );
 
+  const chatCard = useMemo(
+    () => cards.find((c) => c.id === chatCardId) || null,
+    [cards, chatCardId]
+  );
+
+  const chatMessages = chatCardId ? (chatByCard[chatCardId] || []) : [];
+
+  useEffect(() => {
+    if (!chatOpen) return;
+    chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chatOpen, chatCardId, chatMessages.length, chatSending]);
+
   function updateCards(next) {
     saveFlashcards(next);
     setCards(next);
+  }
+
+  function setActiveChatMessages(nextOrFn) {
+    if (!chatCardId) return;
+    setChatByCard((prev) => {
+      const current = prev[chatCardId] || [];
+      const next = typeof nextOrFn === 'function' ? nextOrFn(current) : nextOrFn;
+      return { ...prev, [chatCardId]: next };
+    });
   }
 
   function handleReview(rating) {
@@ -195,10 +292,71 @@ export default function Flashcards() {
     }
   }
 
-  function openEdit() {
-    if (!currentCard) return;
-    setEditDraft(JSON.parse(JSON.stringify(currentCard)));
+  function openEdit(card = currentCard) {
+    if (!card) return;
+    setEditDraft(JSON.parse(JSON.stringify(card)));
     setEditOpen(true);
+  }
+
+  function openChat(card = currentCard) {
+    if (!card) return;
+    setChatCardId(card.id);
+    if (!(chatByCard[card.id]?.length)) {
+      setChatInput(defaultQuestion(card));
+    } else {
+      setChatInput('');
+    }
+    setChatOpen(true);
+  }
+
+  function openForStudy(card) {
+    setMode('all');
+    setCurrentId(card.id);
+    setShowBack(false);
+  }
+
+  async function sendChatMessage() {
+    if (!chatCard || !chatInput.trim() || chatSending) return;
+
+    const message = chatInput.trim();
+    const history = chatMessages;
+    setChatInput('');
+
+    setActiveChatMessages((prev) => [...prev, { role: 'user', content: message }]);
+
+    if (!chatCard.projectId) {
+      setActiveChatMessages((prev) => [
+        ...prev,
+        {
+          role: 'assistant',
+          content: 'This card is missing project context, so model chat is unavailable for it.',
+        },
+      ]);
+      return;
+    }
+
+    setChatSending(true);
+    try {
+      const level = Number.isFinite(chatCard.firstChapter) ? chatCard.firstChapter : 7;
+      const data = await sendReaderChat(
+        chatCard.projectId,
+        message,
+        level,
+        cardContext(chatCard),
+        history
+      );
+      setActiveChatMessages((prev) => [...prev, { role: 'assistant', content: data.response }]);
+    } catch (err) {
+      setActiveChatMessages((prev) => [
+        ...prev,
+        {
+          role: 'assistant',
+          content: err?.message || 'Something went wrong. Please try again.',
+        },
+      ]);
+    } finally {
+      setChatSending(false);
+    }
   }
 
   function saveEdit() {
@@ -225,10 +383,18 @@ export default function Flashcards() {
     setCards(next);
     setEditOpen(false);
     setShowBack(false);
+    if (chatCardId === editDraft.id) {
+      setChatOpen(false);
+      setChatCardId(null);
+      setChatInput('');
+      setChatSending(false);
+    }
   }
 
   function playWordAudio() {
     if (!currentCard || !speechSupported()) return;
+    if (currentCard.language === 'en') return;
+
     const display = currentCard.romanization || currentCard.term || currentCard.realScript;
     const native = currentCard.realScript && currentCard.realScript !== display
       ? currentCard.realScript
@@ -261,7 +427,7 @@ export default function Flashcards() {
               setShowBack(false);
             }}
           >
-            Due ({getDueFlashcards(cards, nowTick).length})
+            Due ({dueCount})
           </Button>
           <Button
             variant={mode === 'all' ? 'primary' : 'secondary'}
@@ -271,7 +437,17 @@ export default function Flashcards() {
               setShowBack(false);
             }}
           >
-            All ({cards.length})
+            Study all ({cards.length})
+          </Button>
+          <Button
+            variant={mode === 'list' ? 'primary' : 'secondary'}
+            size="sm"
+            onClick={() => {
+              setMode('list');
+              setShowBack(false);
+            }}
+          >
+            All cards
           </Button>
         </div>
       </div>
@@ -281,6 +457,75 @@ export default function Flashcards() {
           <p className="text-text-muted">
             No flashcards yet. Create cards from Dictionary rows.
           </p>
+        </Card>
+      ) : mode === 'list' ? (
+        <Card className="p-0 overflow-hidden">
+          <div className="p-4 border-b border-border flex flex-wrap items-center justify-between gap-3">
+            <div className="text-sm text-text-muted">
+              {filteredList.length} of {cards.length} cards
+            </div>
+            <input
+              type="text"
+              value={listQuery}
+              onChange={(e) => setListQuery(e.target.value)}
+              placeholder="Search cards..."
+              className="px-3 py-1.5 border border-border rounded-lg text-sm bg-bg min-w-[240px]"
+            />
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-surface text-left">
+                <tr>
+                  <th className="px-3 py-2 font-medium text-text-muted">Word</th>
+                  <th className="px-3 py-2 font-medium text-text-muted">English</th>
+                  <th className="px-3 py-2 font-medium text-text-muted">Schema</th>
+                  <th className="px-3 py-2 font-medium text-text-muted">Language</th>
+                  <th className="px-3 py-2 font-medium text-text-muted">Due</th>
+                  <th className="px-3 py-2 font-medium text-text-muted">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredList.map((card) => (
+                  <tr key={card.id} className="border-t border-border/50 align-top">
+                    <td className="px-3 py-2 min-w-[220px]">
+                      <div className="font-medium">{card.realScript}</div>
+                      {card.romanization && card.romanization !== card.realScript && (
+                        <div className="text-xs text-text-muted mt-0.5">{card.romanization}</div>
+                      )}
+                      {card.ipa && (
+                        <div className="text-xs text-text-muted mt-0.5">{card.ipa}</div>
+                      )}
+                    </td>
+                    <td className="px-3 py-2">{card.translation || '—'}</td>
+                    <td className="px-3 py-2">{formatSchemaLabel(card.schema)}</td>
+                    <td className="px-3 py-2">{nameFor(card.language)}</td>
+                    <td className="px-3 py-2 text-text-muted">{formatDueAbsolute(card.dueAt)}</td>
+                    <td className="px-3 py-2">
+                      <div className="flex items-center gap-2">
+                        <Button size="sm" variant="secondary" onClick={() => openForStudy(card)}>
+                          Study
+                        </Button>
+                        <Button size="sm" variant="secondary" onClick={() => openEdit(card)}>
+                          Edit
+                        </Button>
+                        <Button size="sm" variant="secondary" onClick={() => openChat(card)}>
+                          Ask Claude
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {filteredList.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="px-3 py-8 text-center text-text-muted">
+                      No cards match your search.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </Card>
       ) : !queue.length ? (
         <Card className="p-8 text-center">
@@ -303,22 +548,25 @@ export default function Flashcards() {
           <Card className="p-6">
             {currentCard && (
               <>
-                <div className="flex items-center justify-between mb-5">
+                <div className="flex items-center justify-between mb-5 gap-3">
                   <div className="text-sm text-text-muted">
                     {nameFor(currentCard.language)} &middot; {formatSchemaLabel(currentCard.schema)}
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap justify-end">
                     {speechSupported() && currentCard.schema === 'substitution' && (
                       <Button variant="secondary" size="sm" onClick={playSentenceAudio}>
                         Play sentence
                       </Button>
                     )}
-                    {speechSupported() && (
+                    {speechSupported() && currentCard.language !== 'en' && (
                       <Button variant="secondary" size="sm" onClick={playWordAudio}>
                         Play word
                       </Button>
                     )}
-                    <Button variant="secondary" size="sm" onClick={openEdit}>
+                    <Button variant="secondary" size="sm" onClick={() => openChat(currentCard)}>
+                      Ask Claude
+                    </Button>
+                    <Button variant="secondary" size="sm" onClick={() => openEdit(currentCard)}>
                       Edit
                     </Button>
                     <div className="text-xs text-text-muted">
@@ -357,6 +605,87 @@ export default function Flashcards() {
                 </div>
               </>
             )}
+          </Card>
+        </div>
+      )}
+
+      {chatOpen && chatCard && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+          <Card className="w-full max-w-3xl h-[78vh] p-0 flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+              <div>
+                <div className="font-medium">Ask Claude</div>
+                <div className="text-xs text-text-muted mt-0.5">
+                  {chatCard.realScript} &middot; {formatSchemaLabel(chatCard.schema)}
+                </div>
+              </div>
+              <Button variant="secondary" size="sm" onClick={() => setChatOpen(false)}>
+                Close
+              </Button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3 bg-bg">
+              {chatMessages.length === 0 && (
+                <p className="text-sm text-text-muted">
+                  Ask about grammar, meaning, pronunciation, or sentence usage for this card.
+                </p>
+              )}
+              {chatMessages.map((msg, i) => (
+                <div
+                  key={`${chatCardId}-${i}`}
+                  className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                >
+                  <div
+                    className={`max-w-[86%] px-3 py-2 rounded-lg text-sm whitespace-pre-wrap leading-relaxed ${
+                      msg.role === 'user'
+                        ? 'bg-accent text-white'
+                        : 'bg-surface text-text'
+                    }`}
+                  >
+                    {msg.content}
+                  </div>
+                </div>
+              ))}
+              {chatSending && (
+                <div className="flex justify-start">
+                  <div className="px-3 py-2 bg-surface rounded-lg">
+                    <Spinner size="sm" />
+                  </div>
+                </div>
+              )}
+              <div ref={chatBottomRef} />
+            </div>
+
+            <div className="border-t border-border p-3 bg-bg">
+              <div className="flex items-center justify-between mb-2">
+                <button
+                  onClick={() => setActiveChatMessages([])}
+                  className="text-xs text-text-muted hover:text-text"
+                  disabled={chatSending || chatMessages.length === 0}
+                >
+                  Clear chat
+                </button>
+              </div>
+              <form
+                className="flex gap-2"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  sendChatMessage();
+                }}
+              >
+                <input
+                  type="text"
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  placeholder="Ask a question..."
+                  className="flex-1 px-3 py-2 border border-border rounded-lg text-sm bg-bg"
+                  disabled={chatSending}
+                />
+                <Button type="submit" disabled={chatSending || !chatInput.trim()}>
+                  Send
+                </Button>
+              </form>
+            </div>
           </Card>
         </div>
       )}

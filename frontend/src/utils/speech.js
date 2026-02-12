@@ -186,7 +186,8 @@ export function speak(text, langCode, opts = {}) {
   if (!clean.trim()) return;
 
   const chunks = chunkText(clean);
-  const bcp = LANG_MAP[voiceLang] || voiceLang;
+  const preferredTag = LANG_MAP[voiceLang] || voiceLang;
+  const fallbackTag = preferredTag.includes('-') ? preferredTag.split('-')[0] : preferredTag;
   const voice = getBestVoice(voiceLang);
   let idx = 0;
 
@@ -202,7 +203,7 @@ export function speak(text, langCode, opts = {}) {
     }
 
     const utterance = new SpeechSynthesisUtterance(chunks[idx]);
-    utterance.lang = bcp;
+    utterance.lang = voice?.lang || fallbackTag;
     utterance.rate = opts.rate || 0.85;
     if (voice) utterance.voice = voice;
 

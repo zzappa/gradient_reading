@@ -8,8 +8,6 @@ import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import PageLayout from '../components/layout/PageLayout';
 
-const MAX_WORDS = 5000;
-
 const SAMPLE_TITLE = 'Winnie-the-Pooh — The Flood';
 const SAMPLE_TEXT = `When the rain began Pooh was asleep. It rained, and it rained, and it rained, and he slept and he slept and he slept. He had had a tiring day. You remember how he discovered the North Pole; well, he was so proud of this that he asked Christopher Robin if there were any other Poles such as a Bear of Little Brain might discover.
 
@@ -165,10 +163,8 @@ export default function NewProject() {
             onChange={(e) => setText(e.target.value)}
           />
           <div className="flex justify-between mt-1">
-            <span
-              className={`text-xs ${wordCount > MAX_WORDS ? 'text-red-600' : 'text-text-muted'}`}
-            >
-              {wordCount.toLocaleString()} / {MAX_WORDS.toLocaleString()} words
+            <span className="text-xs text-text-muted">
+              {wordCount.toLocaleString()} words
             </span>
           </div>
         </div>
@@ -181,7 +177,7 @@ export default function NewProject() {
           <Button
             type="submit"
             disabled={
-              submitting || !title.trim() || !text.trim() || wordCount > MAX_WORDS || sourceLang === lang
+              submitting || !title.trim() || !text.trim() || sourceLang === lang
             }
           >
             {submitting ? 'Creating...' : 'Transform'}

@@ -11,6 +11,7 @@ export default function TermSpan({
   onDoubleClick,
   langCode,
   isFocused = false,
+  forceNativeScript = false,
 }) {
   const [showTooltip, setShowTooltip] = useState(false);
   const [showNative, setShowNative] = useState(false);
@@ -20,7 +21,9 @@ export default function TermSpan({
   // Prefer displayNative (contextual inflected form) over footnote.native_script (base form)
   const nativeScript = displayNative || footnote?.native_script;
   const hasNativeScript = nativeScript && nativeScript !== display;
-  const displayText = showNative && hasNativeScript ? nativeScript : display;
+  const displayText = (forceNativeScript || showNative) && hasNativeScript
+    ? nativeScript
+    : display;
 
   const handleMouseEnter = useCallback(() => {
     setShowTooltip(true);
@@ -46,7 +49,7 @@ export default function TermSpan({
   }, []);
 
   function handleClick() {
-    if (hasNativeScript) {
+    if (hasNativeScript && !forceNativeScript) {
       setShowNative((prev) => !prev);
     }
   }
@@ -61,10 +64,13 @@ export default function TermSpan({
   if (!isNew) {
     return (
       <span
+        onClick={handleClick}
         onDoubleClick={handleDoubleClick}
-        className={isFocused ? 'rounded px-0.5 ring-2 ring-accent/70 ring-offset-1 ring-offset-bg' : ''}
+        className={`${hasNativeScript && !forceNativeScript ? 'cursor-pointer' : ''} ${
+          isFocused ? 'rounded px-0.5 ring-2 ring-accent/70 ring-offset-1 ring-offset-bg' : ''
+        }`}
       >
-        {display}
+        {displayText}
       </span>
     );
   }
@@ -97,7 +103,7 @@ export default function TermSpan({
                 {footnote.grammar_note}
               </div>
             )}
-            {hasNativeScript && !showNative && (
+            {hasNativeScript && !showNative && !forceNativeScript && (
               <div className="text-xs text-accent mt-1">
                 Click to show {nativeScript}
               </div>

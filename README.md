@@ -21,7 +21,7 @@ Language configs currently include:
 
 - `en`, `es`, `fr`, `it`, `pt`, `de`, `pl`, `ru`, `ja`, `zh`, `ko`, `he`, `ar`
 
-- Non-Latin targets are rendered in romanized text in transformed output, with native script available in term metadata/hover details.
+- Non-Latin targets are rendered in romanized text by default, with native script available in term metadata/hover details and a native-script toggle in advanced levels.
 
 ## Prerequisites
 
@@ -131,7 +131,7 @@ npm run preview
 ## Core Workflow
 
 1. Select a seeded user (or run assessment).
-2. Create a project with source text (up to 5000 words).
+2. Create a project with source text.
 3. Choose source and target languages.
 4. Start transformation and monitor progress in the processing page.
 5. Open completed or in-progress levels in the reader.

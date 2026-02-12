@@ -564,6 +564,16 @@ def _repetition_policy_block() -> str:
     )
 
 
+def _lexical_safety_block(target_name: str) -> str:
+    return (
+        f"LEXICAL SAFETY (for {target_name}, required):\n"
+        "- NEVER invent, coin, or fabricate words.\n"
+        "- Use only real, attested dictionary words and natural collocations.\n"
+        "- If unsure, choose a simpler high-frequency word that is definitely valid.\n"
+        "- Do not create ad-hoc derivations to force literal one-to-one translation.\n"
+    )
+
+
 def _romanization_policy_block(lang_code: str, target_name: str) -> str:
     specific: dict[str, str] = {
         "ja": (
@@ -665,6 +675,7 @@ def _language_nativeness_constraints_block(lang_code: str, level: int) -> str:
             "- Avoid unnecessary pronouns; Russian often omits subjects once established.\n"
             "- Use correct aspect (perfective/imperfective) for narrative sequence.\n"
             "- Prefer idiomatic collocations; avoid literal English phrasing.\n"
+            "- Never coin non-existent derivatives or nonce forms.\n"
         ),
         "pl": (
             "LANGUAGE NATIVENESS (Polish, levels 6–7):\n"
@@ -781,6 +792,7 @@ CONSISTENCY MODE (critical):
     terminology_validation = _terminology_validation_block(level)
     locks_policy = _locks_policy_block(level)
     repetition_policy = _repetition_policy_block()
+    lexical_safety = _lexical_safety_block(target_name)
     language_nativeness = _language_nativeness_constraints_block(lang_code, level)
     romanization_policy = _romanization_policy_block(lang_code, target_name) if is_non_latin and level >= 1 else ""
     quality_hint_block = f"QUALITY CORRECTION (must follow):\n{quality_hint.strip()}\n" if quality_hint.strip() else ""
@@ -806,6 +818,7 @@ LEVEL CONTROL RUBRIC:
 {terminology_validation}
 {locks_policy}
 {repetition_policy}
+{lexical_safety}
 {language_nativeness}
 {romanization_policy}
 {quality_hint_block}

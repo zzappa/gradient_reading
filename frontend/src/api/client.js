@@ -54,6 +54,10 @@ export function getAssessment(sessionId) {
   return request(`/assessment/${sessionId}`);
 }
 
+export function deleteAssessment(sessionId) {
+  return request(`/assessment/${sessionId}`, { method: 'DELETE' });
+}
+
 export async function getProjects(userId) {
   const data = await request(`/projects?user_id=${userId}`);
   return data.projects;

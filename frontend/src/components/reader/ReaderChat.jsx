@@ -95,7 +95,7 @@ export default function ReaderChat({
     <div className="w-96 border-l border-border flex flex-col bg-bg">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-        <span className="text-sm font-medium">Ask about this text</span>
+        <span className="text-sm font-medium">Ask Claude about this text</span>
         <div className="flex gap-2">
           {messages.length > 0 && (
             <button

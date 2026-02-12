@@ -1,16 +1,27 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useUser } from '../context/UserContext';
-import { getDictionary } from '../api/client';
+import { getDictionary, getChapter } from '../api/client';
 import { LANGUAGES } from '../languages';
 import Flag from '../components/ui/Flag';
 import PageLayout from '../components/layout/PageLayout';
 import Spinner from '../components/ui/Spinner';
 import { speakTerm, stop, isSupported as speechSupported } from '../utils/speech';
+import {
+  buildSubstitutionData,
+  createFlashcardFromTerm,
+  upsertFlashcard,
+} from '../utils/flashcards';
 
 const CATEGORIES = [
   'all', 'noun', 'verb', 'adjective', 'adverb', 'pronoun',
   'preposition', 'article', 'connector', 'other',
+];
+
+const FLASHCARD_SCHEMAS = [
+  { value: 'en_target', label: 'EN -> Target' },
+  { value: 'target_en', label: 'Target -> EN' },
+  { value: 'substitution', label: 'Substitution' },
 ];
 
 export default function Dictionary() {
@@ -23,6 +34,9 @@ export default function Dictionary() {
   const [catFilter, setCatFilter] = useState('all');
   const [sortCol, setSortCol] = useState('term');
   const [sortAsc, setSortAsc] = useState(true);
+  const [schemaByRow, setSchemaByRow] = useState({});
+  const [creatingRow, setCreatingRow] = useState(null);
+  const [rowFeedback, setRowFeedback] = useState({});
 
   useEffect(() => {
     if (!currentUser) return;
@@ -75,6 +89,60 @@ export default function Dictionary() {
   function sortIndicator(col) {
     if (sortCol !== col) return '';
     return sortAsc ? ' \u25B2' : ' \u25BC';
+  }
+
+  function rowKey(term) {
+    return `${term.term_key}-${term.language}`;
+  }
+
+  function selectedSchema(term) {
+    return schemaByRow[rowKey(term)] || 'en_target';
+  }
+
+  function setFeedback(key, value) {
+    setRowFeedback((prev) => ({ ...prev, [key]: value }));
+    window.setTimeout(() => {
+      setRowFeedback((prev) => {
+        if (!(key in prev)) return prev;
+        const copy = { ...prev };
+        delete copy[key];
+        return copy;
+      });
+    }, 2200);
+  }
+
+  async function handleCreateFlashcard(term) {
+    const key = rowKey(term);
+    const schema = selectedSchema(term);
+    setCreatingRow(key);
+
+    try {
+      let substitution = null;
+      if (schema === 'substitution') {
+        let chapter = null;
+        try {
+          chapter = await getChapter(term.project_id, term.first_chapter);
+        } catch {
+          chapter = null;
+        }
+        substitution = buildSubstitutionData({
+          chapter,
+          termKey: term.term_key,
+          sourceText: chapter?.source_text || '',
+          transformedText: chapter?.content || '',
+          targetDisplay: term.native_script || term.term,
+          translation: term.translation,
+        });
+      }
+
+      const card = createFlashcardFromTerm(term, schema, substitution);
+      const result = upsertFlashcard(card);
+      setFeedback(key, result.mode === 'created' ? 'Created' : 'Updated');
+    } catch (err) {
+      setFeedback(key, `Error: ${err?.message || 'failed'}`);
+    } finally {
+      setCreatingRow(null);
+    }
   }
 
   if (loading) {
@@ -154,6 +222,7 @@ export default function Dictionary() {
                     Level{sortIndicator('first_chapter')}
                   </Th>
                   <th className="px-3 py-2 font-medium text-text-muted">Context</th>
+                  <th className="px-3 py-2 font-medium text-text-muted">Flashcard</th>
                 </tr>
               </thead>
               <tbody>
@@ -200,6 +269,39 @@ export default function Dictionary() {
                       >
                         Open
                       </button>
+                    </td>
+                    <td className="px-3 py-2">
+                      <div className="flex items-center gap-2">
+                        <select
+                          value={selectedSchema(t)}
+                          onChange={(e) =>
+                            setSchemaByRow((prev) => ({
+                              ...prev,
+                              [rowKey(t)]: e.target.value,
+                            }))
+                          }
+                          className="px-2 py-1 border border-border rounded text-xs bg-bg"
+                          disabled={creatingRow === rowKey(t)}
+                        >
+                          {FLASHCARD_SCHEMAS.map((s) => (
+                            <option key={s.value} value={s.value}>
+                              {s.label}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          onClick={() => handleCreateFlashcard(t)}
+                          disabled={creatingRow === rowKey(t)}
+                          className="text-xs text-accent hover:text-accent-hover disabled:opacity-50"
+                        >
+                          {creatingRow === rowKey(t) ? 'Creating...' : 'Create flashcard'}
+                        </button>
+                      </div>
+                      {rowFeedback[rowKey(t)] && (
+                        <div className="text-[11px] text-text-muted mt-1">
+                          {rowFeedback[rowKey(t)]}
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ))}

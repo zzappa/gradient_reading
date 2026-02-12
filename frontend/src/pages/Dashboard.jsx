@@ -5,6 +5,7 @@ import {
   getProjects,
   deleteProject,
   getAssessments,
+  deleteAssessment,
   startTransformation,
 } from '../api/client';
 import { nameFor, LANGUAGES } from '../languages';
@@ -30,6 +31,7 @@ export default function Dashboard() {
   const [error, setError] = useState(null);
   const [projectSearch, setProjectSearch] = useState('');
   const [startingProjectId, setStartingProjectId] = useState(null);
+  const [deletingAssessmentId, setDeletingAssessmentId] = useState(null);
 
   useEffect(() => {
     if (!currentUser) return;
@@ -81,6 +83,19 @@ export default function Dashboard() {
       setError(err.message || 'Failed to start transformation.');
     } finally {
       setStartingProjectId(null);
+    }
+  }
+
+  async function handleDeleteAssessment(sessionId) {
+    if (!window.confirm('Delete this assessment session?')) return;
+    setDeletingAssessmentId(sessionId);
+    try {
+      await deleteAssessment(sessionId);
+      setAssessments((prev) => prev.filter((s) => s.id !== sessionId));
+    } catch (err) {
+      console.error('Failed to delete assessment:', err);
+    } finally {
+      setDeletingAssessmentId(null);
     }
   }
 
@@ -197,7 +212,7 @@ export default function Dashboard() {
                           {project.status}
                         </span>
                         <span className="text-xs text-text-muted">
-                          {nameFor(project.target_language)} &middot; 8 levels
+                          {nameFor(project.target_language)}
                         </span>
                       </div>
                     </div>
@@ -244,27 +259,38 @@ export default function Dashboard() {
               </div>
               <div className="space-y-2">
                 {assessments.map((s) => (
-                  <button
+                  <div
                     key={s.id}
-                    onClick={() => navigate(`/assessment?session=${s.id}`)}
-                    className="w-full text-left px-4 py-3 rounded-lg bg-surface hover:bg-border/50 transition-colors"
+                    className="w-full px-4 py-3 rounded-lg bg-surface hover:bg-border/50 transition-colors"
                   >
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm">
-                        <Flag code={s.target_language} size="sm" /> {nameFor(s.target_language)}{' '}
-                        <span className="text-text-muted">
-                          &middot; {new Date(s.created_at).toLocaleDateString()}
+                    <div className="flex items-center justify-between gap-3">
+                      <button
+                        onClick={() => navigate(`/assessment?session=${s.id}`)}
+                        className="flex-1 text-left"
+                      >
+                        <span className="text-sm">
+                          <Flag code={s.target_language} size="sm" /> {nameFor(s.target_language)}{' '}
+                          <span className="text-text-muted">
+                            &middot; {new Date(s.created_at).toLocaleDateString()}
+                          </span>
                         </span>
-                      </span>
-                      <span className="text-xs">
-                        {s.completed ? (
-                          <span className="text-emerald-600">Level {s.result_level}</span>
-                        ) : (
-                          <span className="text-text-muted">In progress</span>
-                        )}
-                      </span>
+                        <div className="text-xs mt-0.5">
+                          {s.completed ? (
+                            <span className="text-emerald-600">Level {s.result_level}</span>
+                          ) : (
+                            <span className="text-text-muted">In progress</span>
+                          )}
+                        </div>
+                      </button>
+                      <button
+                        onClick={() => handleDeleteAssessment(s.id)}
+                        disabled={deletingAssessmentId === s.id}
+                        className="text-xs text-text-muted hover:text-red-600 disabled:opacity-50"
+                      >
+                        {deletingAssessmentId === s.id ? 'Deleting...' : 'Delete'}
+                      </button>
                     </div>
-                  </button>
+                  </div>
                 ))}
               </div>
             </div>

@@ -31,6 +31,15 @@ async def get_assessment(session_id: str, db: AsyncSession = Depends(get_db)):
     return session
 
 
+@router.delete("/{session_id}", status_code=204)
+async def delete_assessment(session_id: str, db: AsyncSession = Depends(get_db)):
+    session = await db.get(AssessmentSession, session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Assessment session not found")
+    await db.delete(session)
+    await db.commit()
+
+
 @router.post("/start")
 async def start_assessment(data: AssessmentStart, db: AsyncSession = Depends(get_db)):
     if not settings.ANTHROPIC_API_KEY:
