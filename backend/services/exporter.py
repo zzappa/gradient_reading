@@ -4,11 +4,12 @@ import re
 import tempfile
 from datetime import datetime, timezone
 
-# Strip {{display_text|term_key}} or {{display_text|term_key|native}} annotations → keep display_text
-_ANNOTATION_RE = re.compile(r"\{\{([^|]+)\|[^}]+\}\}")
+# Strip {{display_text|term_key}} or {{display_text|term_key|native}} annotations → keep display_text.
+# Also tolerates malformed variants like {{display|}base}.
+_ANNOTATION_RE = re.compile(r"\{\{([^|]+)\|\}?[^}]+\}\}?")
 
 # Extract parts: group1=display, group2=term_key (base form), optional group3=native_display
-_ANNOTATION_PARTS_RE = re.compile(r"\{\{([^|]+)\|([^|}]+)(?:\|[^}]*)?\}\}")
+_ANNOTATION_PARTS_RE = re.compile(r"\{\{([^|]+)\|\}?([^|}]+)(?:\|\}?[^}]*)?\}\}?")
 
 
 def _strip_annotations(text: str) -> str:
@@ -28,7 +29,7 @@ def _green_annotations_with_ipa(text: str, footnotes_by_term: dict) -> str:
     """Replace annotations with highlighted spans that include IPA ruby annotations."""
     def _replace(m):
         display = _esc(m.group(1))
-        term_key = m.group(2).lower().strip()
+        term_key = m.group(2).lower().strip().strip("{}|")
         ft = footnotes_by_term.get(term_key, {})
         pronunciation = ft.get("pronunciation", "")
         if pronunciation:

@@ -4,6 +4,7 @@ import { getProject, getChapters, getChapter, getExportUrl } from '../api/client
 import { useUser } from '../context/UserContext';
 import { levelToCefr } from '../utils/cefr';
 import {
+  buildSubstitutionData,
   createFlashcardFromTerm,
   upsertFlashcard,
 } from '../utils/flashcards';
@@ -14,7 +15,6 @@ import SideBySideView from '../components/reader/SideBySideView';
 import ComprehensionQuiz from '../components/reader/ComprehensionQuiz';
 import Spinner from '../components/ui/Spinner';
 import Button from '../components/ui/Button';
-import Card from '../components/ui/Card';
 import { speak, stop, isSupported as speechSupported } from '../utils/speech';
 import { LANGUAGES } from '../languages';
 
@@ -291,6 +291,44 @@ export default function Reader() {
     setChatInitialMessage(question);
     setChatOpen(true);
   }
+
+  function handleAddFlashcard(fn, schema) {
+    const term = {
+      term: fn.term,
+      term_key: fn.term.toLowerCase(),
+      native_script: fn.native_script || '',
+      pronunciation: fn.pronunciation || '',
+      translation: fn.translation || '',
+      grammar_note: fn.grammar_note || '',
+      language: project?.target_language || 'en',
+      project_id: projectId,
+      first_chapter: currentNum,
+    };
+    let substitution = null;
+    if (schema === 'substitution' && chapter) {
+      substitution = buildSubstitutionData({
+        chapter,
+        termKey: term.term_key,
+        sourceText: chapter.source_text || '',
+        transformedText: chapter.content || '',
+        targetDisplay: fn.native_script || fn.term,
+        translation: fn.translation,
+      });
+    }
+    const card = createFlashcardFromTerm(term, schema, substitution);
+    const result = upsertFlashcard(card);
+    const key = `${fn.term}_${schema}`;
+    setCardFeedback((prev) => ({ ...prev, [key]: result.mode === 'created' ? 'Created' : 'Updated' }));
+    setTimeout(() => setCardFeedback((prev) => {
+      const copy = { ...prev };
+      delete copy[key];
+      return copy;
+    }), 2000);
+  }
+
+  // Check if all levels are read
+  const allLevelsRead = chapters.length > 0 &&
+    chapters.filter((c) => c.chapter_num !== 0).every((c) => readChapters.includes(c.chapter_num));
 
   if (loading) {
     return (
@@ -605,7 +643,7 @@ export default function Reader() {
                       &para;{Number(paraIdx) + 1}
                     </div>
                     {footnotesByPara[paraIdx].map((fn, j) => (
-                      <div key={j} className="mb-2">
+                      <div key={j} className="mb-2 group/fn">
                         <div className="break-words">
                           <span className="text-sm font-medium text-accent">
                             {fn.term}
@@ -625,6 +663,29 @@ export default function Reader() {
                               {' '}&mdash; {fn.translation}
                             </span>
                           )}
+                          {/* Flashcard buttons */}
+                          <span className="inline-flex gap-1 ml-1.5 opacity-0 group-hover/fn:opacity-100 transition-opacity">
+                            {[
+                              { schema: 'target_en', label: 'T\u2192E' },
+                              { schema: 'en_target', label: 'E\u2192T' },
+                            ].map(({ schema, label }) => {
+                              const fbKey = `${fn.term}_${schema}`;
+                              return cardFeedback[fbKey] ? (
+                                <span key={schema} className="text-[10px] text-emerald-600">
+                                  {cardFeedback[fbKey]}
+                                </span>
+                              ) : (
+                                <button
+                                  key={schema}
+                                  onClick={() => handleAddFlashcard(fn, schema)}
+                                  title={`Add ${label} flashcard`}
+                                  className="text-[10px] px-1 py-0.5 rounded bg-surface hover:bg-border/50 text-text-muted hover:text-text"
+                                >
+                                  +{label}
+                                </button>
+                              );
+                            })}
+                          </span>
                         </div>
                         {fn.grammar_note && (
                           <p className="text-xs text-text-muted mt-0.5 leading-snug">
@@ -662,6 +723,28 @@ export default function Reader() {
           />
         )}
       </div>
+
+      {/* Congratulations banner */}
+      {allLevelsRead && (
+        <div className="border-t border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-900/20 px-6 py-4">
+          <div className="max-w-2xl mx-auto text-center">
+            <p className="text-lg font-semibold text-emerald-700 dark:text-emerald-300">
+              Congratulations! You've read all levels.
+            </p>
+            <p className="text-sm text-emerald-600 dark:text-emerald-400 mt-1">
+              You've progressed from the original text through full {LANGUAGES[project?.target_language]?.name || 'target language'}.
+            </p>
+            <div className="flex items-center justify-center gap-3 mt-3">
+              <Button size="sm" onClick={() => navigate('/project/new')}>
+                Start a new project
+              </Button>
+              <Button size="sm" variant="secondary" onClick={() => navigate('/flashcards')}>
+                Review flashcards
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Bottom nav */}
       <div className="flex items-center justify-between px-6 py-3 border-t border-border bg-bg">

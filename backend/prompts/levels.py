@@ -848,6 +848,7 @@ INLINE ANNOTATIONS (non-Latin targets):
 - display_text = transliteration as it appears in the sentence (possibly inflected)
 - base_form = transliterated dictionary/base form
 - native_display = the word in {_script_name(lang["script"])} as it appears in the sentence (inflected form matching display_text)
+- Annotation syntax must be exact. Never output broken pipe and brace placement.
 - Do NOT wrap {source_name} words or proper nouns.
 - Example (Russian): {{{{yego|on|его}}}} — "yego" is the transliteration in context, "on" is the base form, "его" is the native script of the contextual form.
 
@@ -868,6 +869,7 @@ INLINE ANNOTATIONS (Latin targets):
 - Wrap NEW {target_name} content words (nouns, verbs, adjectives, adverbs) as {{{{display_text|base_form}}}}.
 - display_text = the word as it appears in the sentence (possibly inflected)
 - base_form = dictionary/base form
+- Annotation syntax must be exact. Never output broken pipe and brace placement.
 - Do NOT annotate function words (articles, prepositions, conjunctions, particles, pronouns).
 - Do NOT annotate {source_name} words or proper nouns.
 - Only annotate a term on its FIRST occurrence in this chunk.

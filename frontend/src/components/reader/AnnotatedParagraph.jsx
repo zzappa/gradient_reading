@@ -3,7 +3,12 @@ import TermSpan from './TermSpan';
 import { speak, stop, isSupported } from '../../utils/speech';
 
 // Supports both {{display|base}} and {{display|base|native_display}} formats
-const ANNOTATION_RE = /\{\{([^|]+)\|([^|}]+)(?:\|([^}]*))?\}\}/g;
+// Also tolerates malformed variants like {{display|}base}.
+const ANNOTATION_RE = /\{\{([^|]+)\|\}?([^|}]+)(?:\|\}?([^}]*))?\}\}?/g;
+
+function normalizeAnnotationToken(value) {
+  return (value || '').trim().replace(/^[{}|]+|[{}|]+$/g, '');
+}
 
 function parseAnnotations(text) {
   const segments = [];
@@ -16,8 +21,8 @@ function parseAnnotations(text) {
     segments.push({
       type: 'term',
       display: match[1],
-      key: match[2],
-      displayNative: match[3] || null,
+      key: normalizeAnnotationToken(match[2]),
+      displayNative: normalizeAnnotationToken(match[3] || '') || null,
     });
     lastIndex = match.index + match[0].length;
   }

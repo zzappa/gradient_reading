@@ -47,6 +47,10 @@ CONTEXT_TAIL_WORDS = 140
 LEVEL_SEGMENT_WEIGHTS = [0.7, 0.8, 1.25, 1.3, 1.25, 0.95, 0.75]
 ACTIVE_JOB_IDS: set[str] = set()
 
+_ANNOTATION_TOLERANT_RE = re.compile(
+    r"\{\{([^|]+)\|\}?([^|}]+)(?:\|\}?([^}]*))?\}\}?"
+)
+
 
 async def run_transformation_guarded(project_id: str, job_id: str, db_factory):
     """Run one job at a time per job_id and make recovery scheduling idempotent."""
@@ -79,6 +83,40 @@ async def recover_incomplete_jobs(db_factory):
 
 def _word_count(text: str) -> int:
     return len(text.split())
+
+
+def _clean_term_token(value: str) -> str:
+    token = (value or "").strip()
+    token = token.strip("{}").strip()
+    if token.startswith("|"):
+        token = token[1:].strip()
+    if token.endswith("|"):
+        token = token[:-1].strip()
+    return token
+
+
+def _normalize_annotation_markup(text: str) -> str:
+    """Canonicalize tolerant annotation variants to {{display|base}} form.
+
+    Accepts common malformed variants such as:
+    - {{display|}base}
+    - {{display|}base|native}
+    """
+    if not text or "{{" not in text:
+        return text
+
+    def _replace(match: re.Match) -> str:
+        display = (match.group(1) or "").strip()
+        base_form = _clean_term_token(match.group(2) or "")
+        native_display = _clean_term_token(match.group(3) or "") if match.group(3) is not None else ""
+
+        if not display or not base_form:
+            return display or base_form
+        if native_display:
+            return f"{{{{{display}|{base_form}|{native_display}}}}}"
+        return f"{{{{{display}|{base_form}}}}}"
+
+    return _ANNOTATION_TOLERANT_RE.sub(_replace, text)
 
 
 def _expand_units_for_levels(paragraphs: list[str], min_units: int = 7) -> list[str]:
@@ -303,15 +341,27 @@ def _ensure_new_terms_for_refs(result: dict) -> List[dict]:
     has a matching entry in result["new_terms"] (at least a stub).
     Returns the final new_terms list (possibly extended).
     """
-    new_terms = list(result.get("new_terms", []) or [])
+    normalized_new_terms: List[dict] = []
+    for term_data in list(result.get("new_terms", []) or []):
+        if not isinstance(term_data, dict):
+            continue
+        normalized_term = _clean_term_token(term_data.get("term", ""))
+        if not normalized_term:
+            continue
+        fixed = dict(term_data)
+        fixed["term"] = normalized_term
+        normalized_new_terms.append(fixed)
+
+    new_terms = normalized_new_terms
     term_lookup = {t.get("term", "").lower().strip(): t for t in new_terms if t.get("term")}
 
     refs: List[str] = []
     for para_data in result.get("paragraphs", []) or []:
         for ref in para_data.get("footnote_refs", []) or []:
-            r = (ref or "").lower().strip()
+            cleaned_ref = _clean_term_token(ref)
+            r = cleaned_ref.lower().strip()
             if r and r not in term_lookup and r not in [x.lower().strip() for x in refs]:
-                refs.append(ref)
+                refs.append(cleaned_ref)
 
     if refs:
         missing = [r for r in refs if (r.lower().strip() not in term_lookup)]
@@ -351,12 +401,16 @@ def _collect_chunk_outputs(
     out_footnotes: List[dict] = []
 
     for local_idx, para_data in enumerate(result.get("paragraphs", []) or []):
-        text = para_data.get("text", "") or ""
+        text = _normalize_annotation_markup(para_data.get("text", "") or "")
         out_paras.append(text)
 
         global_para_index = paragraph_index_offset + local_idx
-        for ref in para_data.get("footnote_refs", []) or []:
-            ref_key = (ref or "").lower().strip()
+        for raw_ref in para_data.get("footnote_refs", []) or []:
+            ref = _clean_term_token(raw_ref)
+            if not ref:
+                continue
+
+            ref_key = ref.lower().strip()
             fn = {"term": ref, "paragraph_index": global_para_index}
 
             # Immediate enrichment from chunk_term_data (optional but keeps your old behavior)
@@ -647,12 +701,18 @@ async def run_transformation(project_id: str, job_id: str, db_factory):
 
                                     paras = result.get("paragraphs", []) or []
                                     if paras:
-                                        batch_text = paras[0].get("text", "") or ""
+                                        batch_text = _normalize_annotation_markup(
+                                            paras[0].get("text", "") or ""
+                                        )
                                         combined_text_parts.append(batch_text)
                                         continuity_tail = _update_context_tail(continuity_tail, batch_text)
 
-                                        for ref in paras[0].get("footnote_refs", []) or []:
-                                            chapter_footnotes.append({"term": ref, "paragraph_index": para_index})
+                                        for raw_ref in paras[0].get("footnote_refs", []) or []:
+                                            ref = _clean_term_token(raw_ref)
+                                            if ref:
+                                                chapter_footnotes.append(
+                                                    {"term": ref, "paragraph_index": para_index}
+                                                )
                                     else:
                                         # no paragraph returned; ignore
                                         pass

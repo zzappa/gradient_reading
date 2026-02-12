@@ -119,7 +119,7 @@ export async function getDictionary(userId) {
   return data.terms;
 }
 
-export function sendReaderChat(projectId, message, level, contextParagraph, history) {
+export function sendReaderChat(projectId, message, level, contextParagraph, history, userCefr) {
   return request(`/projects/${projectId}/chat/message`, {
     method: 'POST',
     body: JSON.stringify({
@@ -127,6 +127,7 @@ export function sendReaderChat(projectId, message, level, contextParagraph, hist
       level,
       context_paragraph: contextParagraph || null,
       history: history || [],
+      user_cefr: userCefr || null,
     }),
   });
 }

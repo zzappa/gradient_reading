@@ -10,7 +10,12 @@ export const FLASHCARD_SCHEMAS = {
   substitution: { label: 'Substitution' },
 };
 
-const ANNOTATION_RE = /\{\{([^|]+)\|([^|}]+)(?:\|([^}]*))?\}\}/g;
+// Also tolerates malformed variants like {{display|}key}.
+const ANNOTATION_RE = /\{\{([^|]+)\|\}?([^|}]+)(?:\|\}?([^}]*))?\}\}?/g;
+
+function normalizeAnnotationToken(value) {
+  return (value || '').trim().replace(/^[{}|]+|[{}|]+$/g, '');
+}
 
 function safeParse(raw, fallback) {
   try {
@@ -80,8 +85,8 @@ function parseAnnotations(text) {
     segments.push({
       type: 'term',
       display: match[1],
-      key: match[2],
-      displayNative: match[3] || null,
+      key: normalizeAnnotationToken(match[2]),
+      displayNative: normalizeAnnotationToken(match[3] || '') || null,
     });
     last = match.index + match[0].length;
   }
@@ -96,21 +101,6 @@ function stripAnnotations(text) {
   return segments.map((s) => (s.type === 'text' ? s.content : s.display)).join('');
 }
 
-function replaceFirst(haystack, needle, replacement) {
-  const idx = haystack.indexOf(needle);
-  if (idx < 0) return haystack;
-  return haystack.slice(0, idx) + replacement + haystack.slice(idx + needle.length);
-}
-
-function escapeRegExp(text) {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-function replaceFirstCaseInsensitive(haystack, needle, replacement) {
-  if (!needle) return haystack;
-  const re = new RegExp(escapeRegExp(needle), 'i');
-  return haystack.replace(re, replacement);
-}
 
 function splitSentences(text) {
   return (text || '')
@@ -189,35 +179,6 @@ function pickSourceSentence({ sourceParagraphs, paragraphIndex, sentenceIndex, e
   return '';
 }
 
-function injectTargetIntoEnglishSentence(sentence, english, target) {
-  if (!sentence) return target || '';
-
-  if (english) {
-    const replaced = replaceFirstCaseInsensitive(sentence, english, target);
-    if (replaced !== sentence) return replaced;
-
-    const englishTokens = english
-      .toLowerCase()
-      .split(/[^a-z]+/)
-      .map((t) => t.trim())
-      .filter((t) => t.length >= 3)
-      .sort((a, b) => b.length - a.length);
-
-    for (const token of englishTokens) {
-      const tokenReplaced = replaceFirstCaseInsensitive(sentence, token, target);
-      if (tokenReplaced !== sentence) return tokenReplaced;
-    }
-  }
-
-  if (sentence.toLowerCase().includes((target || '').toLowerCase())) return sentence;
-
-  const firstWord = sentence.match(/\b[A-Za-z][A-Za-z'-]*\b/);
-  if (firstWord) {
-    return replaceFirst(sentence, firstWord[0], target);
-  }
-  return `${target} ${sentence}`.trim();
-}
-
 export function buildSubstitutionData({
   chapter,
   termKey,
@@ -228,6 +189,10 @@ export function buildSubstitutionData({
 }) {
   const english = (translation || '').trim() || '';
   const target = (targetDisplay || '').trim() || english;
+
+  // Use first translation alternative as the answer (before comma/semicolon)
+  const primaryEnglish = english.split(/[,;]/).map((s) => s.trim()).filter(Boolean)[0] || english;
+
   const chapterSource = chapter?.source_text || '';
   const chapterTransformed = chapter?.content || '';
   const sourceParagraphs = (sourceText || chapterSource || '').split('\n\n').filter(Boolean);
@@ -236,29 +201,30 @@ export function buildSubstitutionData({
   const paragraphIndex = findFirstTermParagraphIndex(chapter?.footnotes, termKey, targetDisplay);
   const transformedParagraph = transformedParagraphs[paragraphIndex] || transformedParagraphs[0] || '';
   const sentenceIndex = findSentenceIndexWithTerm(transformedParagraph, termKey, targetDisplay);
-  const englishSentence = pickSourceSentence({
+
+  // Extract the transformed sentence directly — the LLM already placed the target
+  // word grammatically in a mixed sentence during transformation.
+  const transformedSentences = (transformedParagraph || '')
+    .split(/(?<=[.!?])\s+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const rawSentence = transformedSentences[sentenceIndex] || transformedSentences[0] || '';
+  const frontSentence = stripAnnotations(rawSentence);
+
+  // Original English sentence as the corrected version
+  const correctedSentence = pickSourceSentence({
     sourceParagraphs,
     paragraphIndex,
     sentenceIndex,
-    englishNeedle: english,
+    englishNeedle: primaryEnglish,
   });
-
-  const frontSentence = injectTargetIntoEnglishSentence(englishSentence, english, target);
-
-  let correctedSentence = replaceFirstCaseInsensitive(frontSentence, target, english);
-  if (correctedSentence === frontSentence) {
-    correctedSentence = replaceFirst(frontSentence, target, english);
-  }
-  if (!correctedSentence || correctedSentence === frontSentence) {
-    correctedSentence = englishSentence || english || '';
-  }
 
   return {
     variant: 'en_with_target',
     prompt: `Replace "${target}" with English.`,
     frontSentence,
-    correctedSentence,
-    answer: english,
+    correctedSentence: correctedSentence || primaryEnglish,
+    answer: primaryEnglish,
     answerSide: 'en',
   };
 }

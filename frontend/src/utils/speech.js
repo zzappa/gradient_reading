@@ -33,7 +33,12 @@ const NON_LATIN_LANGS = new Set(['ru', 'ja', 'zh', 'ko', 'he', 'ar']);
 const QUALITY_KEYWORDS = ['neural', 'enhanced', 'premium', 'wavenet', 'natural', 'google', 'microsoft'];
 
 // Strip {{display|key}} or {{display|key|native}} annotations
-const ANNOTATION_RE = /\{\{([^|]+)\|([^|}]+)(?:\|([^}]*))?\}\}/g;
+// Also tolerates malformed variants like {{display|}key}.
+const ANNOTATION_RE = /\{\{([^|]+)\|\}?([^|}]+)(?:\|\}?([^}]*))?\}\}?/g;
+
+function normalizeAnnotationToken(value) {
+  return (value || '').trim().replace(/^[{}|]+|[{}|]+$/g, '');
+}
 
 /**
  * For TTS: substitute annotations with the best text for speech.
@@ -48,11 +53,14 @@ function stripAnnotationsForTTS(text, footnotesByKey) {
   let hasTransliterated = false;
 
   const result = text.replace(ANNOTATION_RE, (_, display, key, displayNative) => {
-    if (displayNative) {
+    const normalizedKey = normalizeAnnotationToken(key).toLowerCase();
+    const normalizedNative = normalizeAnnotationToken(displayNative);
+
+    if (normalizedNative) {
       hasNative = true;
-      return displayNative;
+      return normalizedNative;
     }
-    const fn = footnotesByKey?.[key.toLowerCase()];
+    const fn = footnotesByKey?.[normalizedKey];
     if (fn?.native_script) {
       hasNative = true;
       return fn.native_script;
