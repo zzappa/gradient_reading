@@ -2,6 +2,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useUser } from '../../context/UserContext';
 import { useTheme } from '../../context/ThemeContext';
 import { LANGUAGES } from '../../languages';
+import { levelToCefr } from '../../utils/cefr';
+import { hasAlphabet } from '../../data/alphabets';
 
 export default function Header() {
   const { users, currentUser, selectUser } = useUser();
@@ -21,10 +23,14 @@ export default function Header() {
     const entries = Object.entries(levels);
     if (entries.length === 0) return u.name;
     const parts = entries
-      .map(([code, lv]) => `${LANGUAGES[code]?.name || code} ${lv}`)
+      .map(([code, lv]) => `${LANGUAGES[code]?.name || code} ${levelToCefr(lv) || lv}`)
       .join(', ');
     return `${u.name} — ${parts}`;
   }
+
+  const hasScripts = currentUser
+    ? Object.keys(currentUser.levels || {}).some(hasAlphabet)
+    : false;
 
   return (
     <header className="border-b border-border bg-bg">
@@ -54,6 +60,14 @@ export default function Header() {
               >
                 Flashcards
               </Link>
+              {hasScripts && (
+                <Link
+                  to="/alphabet"
+                  className="text-sm text-text-muted hover:text-text no-underline"
+                >
+                  Scripts
+                </Link>
+              )}
             </>
           )}
 

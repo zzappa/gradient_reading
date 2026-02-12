@@ -12,6 +12,8 @@ import Processing from './pages/Processing';
 import Reader from './pages/Reader';
 import Dictionary from './pages/Dictionary';
 import Flashcards from './pages/Flashcards';
+import AlphabetTrainer from './pages/AlphabetTrainer';
+import Scripts from './pages/Scripts';
 import { stop as stopSpeech } from './utils/speech';
 
 function StopSpeechOnNavigate() {
@@ -37,6 +39,8 @@ export default function App() {
           <Route path="/project/:projectId/read" element={<Reader />} />
           <Route path="/dictionary" element={<Dictionary />} />
           <Route path="/flashcards" element={<Flashcards />} />
+          <Route path="/alphabet" element={<Scripts />} />
+          <Route path="/alphabet/:langCode" element={<AlphabetTrainer />} />
         </Routes>
       </UserProvider>
       </ThemeProvider>

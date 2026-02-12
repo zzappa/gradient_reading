@@ -15,6 +15,7 @@ import Card from '../components/ui/Card';
 import Spinner from '../components/ui/Spinner';
 import PageLayout from '../components/layout/PageLayout';
 import { levelToCefr } from '../utils/cefr';
+import { hasAlphabet } from '../data/alphabets';
 
 const STATUS_STYLES = {
   created: 'bg-surface text-text-muted',
@@ -215,6 +216,14 @@ export default function Dashboard() {
                         <span className="text-xs text-text-muted">
                           {nameFor(project.target_language)}
                         </span>
+                        {hasAlphabet(project.target_language) && (
+                          <Link
+                            to={`/alphabet/${project.target_language}`}
+                            className="text-xs text-accent hover:text-accent-hover no-underline"
+                          >
+                            Learn script
+                          </Link>
+                        )}
                       </div>
                     </div>
                     <div className="flex items-center gap-2">

@@ -1,0 +1,531 @@
+export const ALPHABETS = {
+  ja: {
+    name: 'Japanese',
+    tabs: [
+      {
+        id: 'hiragana',
+        label: 'Hiragana',
+        columns: ['a', 'i', 'u', 'e', 'o'],
+        groups: [
+          {
+            label: '',
+            chars: [
+              { char: 'あ', romaji: 'a' },
+              { char: 'い', romaji: 'i' },
+              { char: 'う', romaji: 'u' },
+              { char: 'え', romaji: 'e' },
+              { char: 'お', romaji: 'o' },
+            ],
+          },
+          {
+            label: 'k',
+            chars: [
+              { char: 'か', romaji: 'ka' },
+              { char: 'き', romaji: 'ki' },
+              { char: 'く', romaji: 'ku' },
+              { char: 'け', romaji: 'ke' },
+              { char: 'こ', romaji: 'ko' },
+            ],
+          },
+          {
+            label: 's',
+            chars: [
+              { char: 'さ', romaji: 'sa' },
+              { char: 'し', romaji: 'shi' },
+              { char: 'す', romaji: 'su' },
+              { char: 'せ', romaji: 'se' },
+              { char: 'そ', romaji: 'so' },
+            ],
+          },
+          {
+            label: 't',
+            chars: [
+              { char: 'た', romaji: 'ta' },
+              { char: 'ち', romaji: 'chi' },
+              { char: 'つ', romaji: 'tsu' },
+              { char: 'て', romaji: 'te' },
+              { char: 'と', romaji: 'to' },
+            ],
+          },
+          {
+            label: 'n',
+            chars: [
+              { char: 'な', romaji: 'na' },
+              { char: 'に', romaji: 'ni' },
+              { char: 'ぬ', romaji: 'nu' },
+              { char: 'ね', romaji: 'ne' },
+              { char: 'の', romaji: 'no' },
+            ],
+          },
+          {
+            label: 'h',
+            chars: [
+              { char: 'は', romaji: 'ha' },
+              { char: 'ひ', romaji: 'hi' },
+              { char: 'ふ', romaji: 'fu' },
+              { char: 'へ', romaji: 'he' },
+              { char: 'ほ', romaji: 'ho' },
+            ],
+          },
+          {
+            label: 'm',
+            chars: [
+              { char: 'ま', romaji: 'ma' },
+              { char: 'み', romaji: 'mi' },
+              { char: 'む', romaji: 'mu' },
+              { char: 'め', romaji: 'me' },
+              { char: 'も', romaji: 'mo' },
+            ],
+          },
+          {
+            label: 'y',
+            chars: [
+              { char: 'や', romaji: 'ya' },
+              null,
+              { char: 'ゆ', romaji: 'yu' },
+              null,
+              { char: 'よ', romaji: 'yo' },
+            ],
+          },
+          {
+            label: 'r',
+            chars: [
+              { char: 'ら', romaji: 'ra' },
+              { char: 'り', romaji: 'ri' },
+              { char: 'る', romaji: 'ru' },
+              { char: 'れ', romaji: 're' },
+              { char: 'ろ', romaji: 'ro' },
+            ],
+          },
+          {
+            label: 'w',
+            chars: [
+              { char: 'わ', romaji: 'wa' },
+              null,
+              null,
+              null,
+              { char: 'を', romaji: 'wo' },
+            ],
+          },
+          {
+            label: '',
+            chars: [
+              { char: 'ん', romaji: 'n' },
+              null,
+              null,
+              null,
+              null,
+            ],
+          },
+        ],
+      },
+      {
+        id: 'katakana',
+        label: 'Katakana',
+        columns: ['a', 'i', 'u', 'e', 'o'],
+        groups: [
+          {
+            label: '',
+            chars: [
+              { char: 'ア', romaji: 'a' },
+              { char: 'イ', romaji: 'i' },
+              { char: 'ウ', romaji: 'u' },
+              { char: 'エ', romaji: 'e' },
+              { char: 'オ', romaji: 'o' },
+            ],
+          },
+          {
+            label: 'k',
+            chars: [
+              { char: 'カ', romaji: 'ka' },
+              { char: 'キ', romaji: 'ki' },
+              { char: 'ク', romaji: 'ku' },
+              { char: 'ケ', romaji: 'ke' },
+              { char: 'コ', romaji: 'ko' },
+            ],
+          },
+          {
+            label: 's',
+            chars: [
+              { char: 'サ', romaji: 'sa' },
+              { char: 'シ', romaji: 'shi' },
+              { char: 'ス', romaji: 'su' },
+              { char: 'セ', romaji: 'se' },
+              { char: 'ソ', romaji: 'so' },
+            ],
+          },
+          {
+            label: 't',
+            chars: [
+              { char: 'タ', romaji: 'ta' },
+              { char: 'チ', romaji: 'chi' },
+              { char: 'ツ', romaji: 'tsu' },
+              { char: 'テ', romaji: 'te' },
+              { char: 'ト', romaji: 'to' },
+            ],
+          },
+          {
+            label: 'n',
+            chars: [
+              { char: 'ナ', romaji: 'na' },
+              { char: 'ニ', romaji: 'ni' },
+              { char: 'ヌ', romaji: 'nu' },
+              { char: 'ネ', romaji: 'ne' },
+              { char: 'ノ', romaji: 'no' },
+            ],
+          },
+          {
+            label: 'h',
+            chars: [
+              { char: 'ハ', romaji: 'ha' },
+              { char: 'ヒ', romaji: 'hi' },
+              { char: 'フ', romaji: 'fu' },
+              { char: 'ヘ', romaji: 'he' },
+              { char: 'ホ', romaji: 'ho' },
+            ],
+          },
+          {
+            label: 'm',
+            chars: [
+              { char: 'マ', romaji: 'ma' },
+              { char: 'ミ', romaji: 'mi' },
+              { char: 'ム', romaji: 'mu' },
+              { char: 'メ', romaji: 'me' },
+              { char: 'モ', romaji: 'mo' },
+            ],
+          },
+          {
+            label: 'y',
+            chars: [
+              { char: 'ヤ', romaji: 'ya' },
+              null,
+              { char: 'ユ', romaji: 'yu' },
+              null,
+              { char: 'ヨ', romaji: 'yo' },
+            ],
+          },
+          {
+            label: 'r',
+            chars: [
+              { char: 'ラ', romaji: 'ra' },
+              { char: 'リ', romaji: 'ri' },
+              { char: 'ル', romaji: 'ru' },
+              { char: 'レ', romaji: 're' },
+              { char: 'ロ', romaji: 'ro' },
+            ],
+          },
+          {
+            label: 'w',
+            chars: [
+              { char: 'ワ', romaji: 'wa' },
+              null,
+              null,
+              null,
+              { char: 'ヲ', romaji: 'wo' },
+            ],
+          },
+          {
+            label: '',
+            chars: [
+              { char: 'ン', romaji: 'n' },
+              null,
+              null,
+              null,
+              null,
+            ],
+          },
+        ],
+      },
+    ],
+  },
+  he: {
+    name: 'Hebrew',
+    tabs: [
+      {
+        id: 'hebrew',
+        label: 'Hebrew',
+        columns: null,
+        groups: [
+          {
+            label: 'Letters',
+            chars: [
+              { char: 'א', romaji: 'alef', note: 'silent / glottal stop' },
+              { char: 'ב', romaji: 'bet' },
+              { char: 'ג', romaji: 'gimel' },
+              { char: 'ד', romaji: 'dalet' },
+              { char: 'ה', romaji: 'he' },
+              { char: 'ו', romaji: 'vav' },
+              { char: 'ז', romaji: 'zayin' },
+              { char: 'ח', romaji: 'chet' },
+              { char: 'ט', romaji: 'tet' },
+              { char: 'י', romaji: 'yod' },
+              { char: 'כ', romaji: 'kaf' },
+              { char: 'ל', romaji: 'lamed' },
+              { char: 'מ', romaji: 'mem' },
+              { char: 'נ', romaji: 'nun' },
+              { char: 'ס', romaji: 'samekh' },
+              { char: 'ע', romaji: 'ayin', note: 'silent / pharyngeal' },
+              { char: 'פ', romaji: 'pe' },
+              { char: 'צ', romaji: 'tsadi' },
+              { char: 'ק', romaji: 'qof' },
+              { char: 'ר', romaji: 'resh' },
+              { char: 'ש', romaji: 'shin' },
+              { char: 'ת', romaji: 'tav' },
+            ],
+          },
+          {
+            label: 'Final forms',
+            chars: [
+              { char: 'ך', romaji: 'kaf sofit', note: 'final kaf' },
+              { char: 'ם', romaji: 'mem sofit', note: 'final mem' },
+              { char: 'ן', romaji: 'nun sofit', note: 'final nun' },
+              { char: 'ף', romaji: 'pe sofit', note: 'final pe' },
+              { char: 'ץ', romaji: 'tsadi sofit', note: 'final tsadi' },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+  ar: {
+    name: 'Arabic',
+    tabs: [
+      {
+        id: 'arabic',
+        label: 'Arabic',
+        columns: null,
+        groups: [
+          {
+            label: 'Letters',
+            chars: [
+              { char: 'ا', romaji: 'alif', note: 'long vowel / glottal stop' },
+              { char: 'ب', romaji: 'ba' },
+              { char: 'ت', romaji: 'ta' },
+              { char: 'ث', romaji: 'tha', note: 'th as in "think"' },
+              { char: 'ج', romaji: 'jim' },
+              { char: 'ح', romaji: 'ha', note: 'pharyngeal h' },
+              { char: 'خ', romaji: 'kha', note: 'like German "ch"' },
+              { char: 'د', romaji: 'dal' },
+              { char: 'ذ', romaji: 'dhal', note: 'th as in "this"' },
+              { char: 'ر', romaji: 'ra' },
+              { char: 'ز', romaji: 'zay' },
+              { char: 'س', romaji: 'sin' },
+              { char: 'ش', romaji: 'shin' },
+              { char: 'ص', romaji: 'sad', note: 'emphatic s' },
+              { char: 'ض', romaji: 'dad', note: 'emphatic d' },
+              { char: 'ط', romaji: 'ta', note: 'emphatic t' },
+              { char: 'ظ', romaji: 'dha', note: 'emphatic dh' },
+              { char: 'ع', romaji: 'ayn', note: 'voiced pharyngeal' },
+              { char: 'غ', romaji: 'ghayn', note: 'like French "r"' },
+              { char: 'ف', romaji: 'fa' },
+              { char: 'ق', romaji: 'qaf', note: 'deep k' },
+              { char: 'ك', romaji: 'kaf' },
+              { char: 'ل', romaji: 'lam' },
+              { char: 'م', romaji: 'mim' },
+              { char: 'ن', romaji: 'nun' },
+              { char: 'ه', romaji: 'ha' },
+              { char: 'و', romaji: 'waw' },
+              { char: 'ي', romaji: 'ya' },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+  ru: {
+    name: 'Russian',
+    tabs: [
+      {
+        id: 'cyrillic',
+        label: 'Cyrillic',
+        columns: null,
+        groups: [
+          {
+            label: 'Letters',
+            chars: [
+              { char: 'А', romaji: 'a' },
+              { char: 'Б', romaji: 'b' },
+              { char: 'В', romaji: 'v' },
+              { char: 'Г', romaji: 'g' },
+              { char: 'Д', romaji: 'd' },
+              { char: 'Е', romaji: 'ye' },
+              { char: 'Ё', romaji: 'yo' },
+              { char: 'Ж', romaji: 'zh' },
+              { char: 'З', romaji: 'z' },
+              { char: 'И', romaji: 'i' },
+              { char: 'Й', romaji: 'y', note: 'short i' },
+              { char: 'К', romaji: 'k' },
+              { char: 'Л', romaji: 'l' },
+              { char: 'М', romaji: 'm' },
+              { char: 'Н', romaji: 'n' },
+              { char: 'О', romaji: 'o' },
+              { char: 'П', romaji: 'p' },
+              { char: 'Р', romaji: 'r' },
+              { char: 'С', romaji: 's' },
+              { char: 'Т', romaji: 't' },
+              { char: 'У', romaji: 'u' },
+              { char: 'Ф', romaji: 'f' },
+              { char: 'Х', romaji: 'kh' },
+              { char: 'Ц', romaji: 'ts' },
+              { char: 'Ч', romaji: 'ch' },
+              { char: 'Ш', romaji: 'sh' },
+              { char: 'Щ', romaji: 'shch' },
+              { char: 'Ъ', romaji: '', note: 'hard sign (no sound)' },
+              { char: 'Ы', romaji: 'y' },
+              { char: 'Ь', romaji: '', note: 'soft sign (no sound)' },
+              { char: 'Э', romaji: 'e' },
+              { char: 'Ю', romaji: 'yu' },
+              { char: 'Я', romaji: 'ya' },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+  ko: {
+    name: 'Korean',
+    tabs: [
+      {
+        id: 'consonants',
+        label: 'Consonants',
+        columns: null,
+        groups: [
+          {
+            label: 'Basic consonants',
+            chars: [
+              { char: 'ㄱ', romaji: 'g/k' },
+              { char: 'ㄴ', romaji: 'n' },
+              { char: 'ㄷ', romaji: 'd/t' },
+              { char: 'ㄹ', romaji: 'r/l' },
+              { char: 'ㅁ', romaji: 'm' },
+              { char: 'ㅂ', romaji: 'b/p' },
+              { char: 'ㅅ', romaji: 's' },
+              { char: 'ㅇ', romaji: 'ng', note: 'silent at start, "ng" at end' },
+              { char: 'ㅈ', romaji: 'j' },
+              { char: 'ㅊ', romaji: 'ch' },
+              { char: 'ㅋ', romaji: 'k' },
+              { char: 'ㅌ', romaji: 't' },
+              { char: 'ㅍ', romaji: 'p' },
+              { char: 'ㅎ', romaji: 'h' },
+            ],
+          },
+        ],
+      },
+      {
+        id: 'vowels',
+        label: 'Vowels',
+        columns: null,
+        groups: [
+          {
+            label: 'Basic vowels',
+            chars: [
+              { char: 'ㅏ', romaji: 'a' },
+              { char: 'ㅑ', romaji: 'ya' },
+              { char: 'ㅓ', romaji: 'eo' },
+              { char: 'ㅕ', romaji: 'yeo' },
+              { char: 'ㅗ', romaji: 'o' },
+              { char: 'ㅛ', romaji: 'yo' },
+              { char: 'ㅜ', romaji: 'u' },
+              { char: 'ㅠ', romaji: 'yu' },
+              { char: 'ㅡ', romaji: 'eu' },
+              { char: 'ㅣ', romaji: 'i' },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+  zh: {
+    name: 'Chinese',
+    tabs: [
+      {
+        id: 'radicals',
+        label: 'Common Radicals',
+        columns: null,
+        groups: [
+          {
+            label: 'Nature',
+            chars: [
+              { char: '水', romaji: 'shuǐ', note: 'water' },
+              { char: '火', romaji: 'huǒ', note: 'fire' },
+              { char: '木', romaji: 'mù', note: 'wood/tree' },
+              { char: '金', romaji: 'jīn', note: 'metal/gold' },
+              { char: '土', romaji: 'tǔ', note: 'earth/soil' },
+              { char: '日', romaji: 'rì', note: 'sun/day' },
+              { char: '月', romaji: 'yuè', note: 'moon/month' },
+              { char: '山', romaji: 'shān', note: 'mountain' },
+              { char: '石', romaji: 'shí', note: 'stone' },
+              { char: '雨', romaji: 'yǔ', note: 'rain' },
+              { char: '風', romaji: 'fēng', note: 'wind' },
+              { char: '田', romaji: 'tián', note: 'field' },
+            ],
+          },
+          {
+            label: 'People & body',
+            chars: [
+              { char: '人', romaji: 'rén', note: 'person' },
+              { char: '口', romaji: 'kǒu', note: 'mouth' },
+              { char: '手', romaji: 'shǒu', note: 'hand' },
+              { char: '目', romaji: 'mù', note: 'eye' },
+              { char: '耳', romaji: 'ěr', note: 'ear' },
+              { char: '心', romaji: 'xīn', note: 'heart/mind' },
+              { char: '女', romaji: 'nǚ', note: 'woman' },
+              { char: '子', romaji: 'zǐ', note: 'child' },
+              { char: '足', romaji: 'zú', note: 'foot' },
+              { char: '力', romaji: 'lì', note: 'power/strength' },
+            ],
+          },
+          {
+            label: 'Objects & concepts',
+            chars: [
+              { char: '大', romaji: 'dà', note: 'big' },
+              { char: '小', romaji: 'xiǎo', note: 'small' },
+              { char: '中', romaji: 'zhōng', note: 'middle' },
+              { char: '上', romaji: 'shàng', note: 'up/above' },
+              { char: '下', romaji: 'xià', note: 'down/below' },
+              { char: '一', romaji: 'yī', note: 'one' },
+              { char: '二', romaji: 'èr', note: 'two' },
+              { char: '三', romaji: 'sān', note: 'three' },
+              { char: '十', romaji: 'shí', note: 'ten' },
+              { char: '百', romaji: 'bǎi', note: 'hundred' },
+            ],
+          },
+          {
+            label: 'Actions & structures',
+            chars: [
+              { char: '言', romaji: 'yán', note: 'speech/words' },
+              { char: '食', romaji: 'shí', note: 'food/eat' },
+              { char: '門', romaji: 'mén', note: 'gate/door' },
+              { char: '車', romaji: 'chē', note: 'vehicle' },
+              { char: '馬', romaji: 'mǎ', note: 'horse' },
+              { char: '魚', romaji: 'yú', note: 'fish' },
+              { char: '鳥', romaji: 'niǎo', note: 'bird' },
+              { char: '刀', romaji: 'dāo', note: 'knife' },
+              { char: '弓', romaji: 'gōng', note: 'bow' },
+              { char: '竹', romaji: 'zhú', note: 'bamboo' },
+              { char: '糸', romaji: 'sī', note: 'silk/thread' },
+              { char: '衣', romaji: 'yī', note: 'clothing' },
+              { char: '貝', romaji: 'bèi', note: 'shell/money' },
+              { char: '王', romaji: 'wáng', note: 'king' },
+              { char: '白', romaji: 'bái', note: 'white' },
+              { char: '黑', romaji: 'hēi', note: 'black' },
+              { char: '見', romaji: 'jiàn', note: 'see' },
+              { char: '立', romaji: 'lì', note: 'stand' },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+};
+
+// Helper to get all characters from a tab (flattened, nulls removed)
+export function getTabChars(tab) {
+  if (!tab) return [];
+  return tab.groups.flatMap((g) => g.chars.filter(Boolean));
+}
+
+// Get the set of non-Latin language codes that have alphabet data
+export function hasAlphabet(langCode) {
+  return langCode in ALPHABETS;
+}

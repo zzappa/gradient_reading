@@ -147,7 +147,7 @@ export default function Dictionary() {
 
   if (loading) {
     return (
-      <PageLayout wide>
+      <PageLayout wide className="max-w-none">
         <div className="flex justify-center py-16">
           <Spinner size="lg" />
         </div>
@@ -156,7 +156,7 @@ export default function Dictionary() {
   }
 
   return (
-    <PageLayout wide>
+    <PageLayout wide className="max-w-none">
       <h1 className="text-2xl font-semibold mb-6">Dictionary</h1>
 
       {terms.length === 0 ? (

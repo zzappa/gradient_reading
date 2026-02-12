@@ -238,11 +238,11 @@ export function speak(text, langCode, opts = {}) {
  */
 export function speakTerm(text, langCode, nativeText = null) {
   if (NON_LATIN_LANGS.has(langCode)) {
-    if (nativeText) {
+    if (nativeText && getBestVoice(langCode)) {
       // Native script + target language voice = correct pronunciation
       speak(nativeText, langCode, { rate: 0.75 });
     } else {
-      // Latin transliteration + English voice = reads it naturally at least
+      // No voice for target language, or no native text — speak transliteration with English voice
       speak(text, 'en', { rate: 0.75 });
     }
   } else {

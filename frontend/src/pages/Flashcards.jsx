@@ -16,6 +16,44 @@ import {
 import { nameFor } from '../languages';
 import { isSupported as speechSupported, speak, speakTerm, stop } from '../utils/speech';
 
+function escapeRegExp(text) {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function findSubstitutionNeedle(card, sentence) {
+  const haystack = (sentence || '').toLowerCase();
+  if (!haystack) return '';
+
+  const candidates = [card?.realScript, card?.romanization, card?.term]
+    .map((v) => (v || '').trim())
+    .filter(Boolean)
+    .sort((a, b) => b.length - a.length);
+
+  return candidates.find((value) => haystack.includes(value.toLowerCase())) || '';
+}
+
+function renderSubstitutionSentence(card, sentence) {
+  const text = sentence || '';
+  if (!text) return '';
+
+  const needle = findSubstitutionNeedle(card, text);
+  if (!needle) return text;
+
+  const parts = text.split(new RegExp(`(${escapeRegExp(needle)})`, 'gi'));
+  if (parts.length === 1) return text;
+
+  return parts.map((part, idx) => {
+    if (part.toLowerCase() !== needle.toLowerCase()) {
+      return <span key={`txt-${idx}`}>{part}</span>;
+    }
+    return (
+      <span key={`hit-${idx}`} className="text-emerald-600 font-semibold">
+        {part}
+      </span>
+    );
+  });
+}
+
 function TargetWordBlock({ realScript, ipa, romanization }) {
   return (
     <div className="text-center py-2">
@@ -55,7 +93,7 @@ function renderFront(card) {
           {substitution.prompt || 'Replace the highlighted target word with English.'}
         </p>
         <p className="font-serif text-2xl leading-relaxed text-center">
-          {substitution.frontSentence || ''}
+          {renderSubstitutionSentence(card, substitution.frontSentence || '')}
         </p>
       </>
     );
