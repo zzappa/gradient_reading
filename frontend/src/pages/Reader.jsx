@@ -17,6 +17,7 @@ import Spinner from '../components/ui/Spinner';
 import Button from '../components/ui/Button';
 import { speak, stop, isSupported as speechSupported } from '../utils/speech';
 import { LANGUAGES } from '../languages';
+import { splitChapterParagraphs } from '../utils/chapterContent';
 
 const FONT_SIZES = [
   { label: 'A', class: 'text-base', value: 'sm' },
@@ -356,9 +357,7 @@ export default function Reader() {
     );
   }
 
-  const paragraphs = chapter?.content
-    ? chapter.content.split('\n\n').filter(Boolean)
-    : [];
+  const paragraphs = splitChapterParagraphs(chapter?.content || '');
 
   const footnotes = chapter?.footnotes || [];
 
