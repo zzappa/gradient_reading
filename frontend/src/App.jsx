@@ -14,6 +14,7 @@ import Dictionary from './pages/Dictionary';
 import Flashcards from './pages/Flashcards';
 import AlphabetTrainer from './pages/AlphabetTrainer';
 import Scripts from './pages/Scripts';
+import GuidedSession from './pages/GuidedSession';
 import { stop as stopSpeech } from './utils/speech';
 
 function StopSpeechOnNavigate() {
@@ -39,6 +40,7 @@ export default function App() {
           <Route path="/project/:projectId/read" element={<Reader />} />
           <Route path="/dictionary" element={<Dictionary />} />
           <Route path="/flashcards" element={<Flashcards />} />
+          <Route path="/session" element={<GuidedSession />} />
           <Route path="/alphabet" element={<Scripts />} />
           <Route path="/alphabet/:langCode" element={<AlphabetTrainer />} />
         </Routes>

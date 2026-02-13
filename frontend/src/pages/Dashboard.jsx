@@ -288,6 +288,20 @@ export default function Dashboard() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
+                      {project.status === 'completed' && (
+                        <button
+                          onClick={() => {
+                            const userLevel = Number(currentUser?.levels?.[project.target_language]);
+                            const recommendedLevel = Number.isFinite(userLevel)
+                              ? userLevel
+                              : (project.start_level || 0);
+                            navigate(`/session?project=${project.id}&level=${recommendedLevel}`);
+                          }}
+                          className="text-sm text-text-muted hover:text-text px-2 py-1"
+                        >
+                          Session
+                        </button>
+                      )}
                       {project.status === 'processing' ? (
                         <button
                           onClick={() => navigate(`/project/${project.id}/processing`)}

@@ -60,6 +60,12 @@ export default function Header() {
                 Flashcards
               </Link>
               <Link
+                to="/session"
+                className="text-sm text-text-muted hover:text-text no-underline"
+              >
+                Session
+              </Link>
+              <Link
                 to="/alphabet"
                 className="text-sm text-text-muted hover:text-text no-underline"
               >
