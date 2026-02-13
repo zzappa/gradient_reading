@@ -20,7 +20,7 @@ import logging
 import re
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Tuple
+from typing import Any, List, Tuple
 
 from sqlalchemy import delete, select
 
@@ -152,6 +152,75 @@ def _normalize_annotation_markup(text: str) -> str:
         return f"{{{{{display}|{base_form}}}}}"
 
     return _ANNOTATION_TOLERANT_RE.sub(_replace, text)
+
+
+def _coerce_transform_result(result: Any) -> dict:
+    """Normalize model output to a dict with `paragraphs` and `new_terms` keys."""
+    if isinstance(result, dict):
+        return result
+    if isinstance(result, str):
+        text = result.strip()
+        paragraphs = [{"text": text, "footnote_refs": []}] if text else []
+        return {"paragraphs": paragraphs, "new_terms": []}
+    if isinstance(result, list):
+        paragraphs = []
+        for item in result:
+            if isinstance(item, str):
+                text = item.strip()
+                if text:
+                    paragraphs.append({"text": text, "footnote_refs": []})
+            elif isinstance(item, dict):
+                paragraphs.append(item)
+        return {"paragraphs": paragraphs, "new_terms": []}
+    return {"paragraphs": [], "new_terms": []}
+
+
+def _normalize_footnote_refs(value: Any) -> list[str]:
+    if isinstance(value, list):
+        refs = value
+    elif isinstance(value, str):
+        refs = [value]
+    elif value is None:
+        refs = []
+    else:
+        refs = [str(value)]
+
+    out: list[str] = []
+    for ref in refs:
+        cleaned = _clean_term_token(ref if isinstance(ref, str) else str(ref))
+        if cleaned:
+            out.append(cleaned)
+    return out
+
+
+def _normalized_paragraphs(result: dict) -> list[dict]:
+    raw = result.get("paragraphs", [])
+    if isinstance(raw, list):
+        paragraphs = raw
+    elif raw is None:
+        paragraphs = []
+    else:
+        paragraphs = [raw]
+
+    out: list[dict] = []
+    for para in paragraphs:
+        if isinstance(para, str):
+            out.append({"text": para, "footnote_refs": []})
+            continue
+        if not isinstance(para, dict):
+            continue
+
+        text_value = para.get("text", "")
+        if not isinstance(text_value, str):
+            text_value = "" if text_value is None else str(text_value)
+
+        out.append(
+            {
+                "text": text_value,
+                "footnote_refs": _normalize_footnote_refs(para.get("footnote_refs", [])),
+            }
+        )
+    return out
 
 
 def _expand_units_for_levels(paragraphs: list[str], min_units: int = 7) -> list[str]:
@@ -376,8 +445,24 @@ def _ensure_new_terms_for_refs(result: dict) -> List[dict]:
     has a matching entry in result["new_terms"] (at least a stub).
     Returns the final new_terms list (possibly extended).
     """
+    result = _coerce_transform_result(result)
     normalized_new_terms: List[dict] = []
     for term_data in list(result.get("new_terms", []) or []):
+        if isinstance(term_data, str):
+            normalized_term = _clean_term_token(term_data)
+            if normalized_term:
+                normalized_new_terms.append(
+                    {
+                        "term": normalized_term,
+                        "translation": normalized_term,
+                        "explanation": "",
+                        "category": "other",
+                        "grammar_note": "",
+                        "pronunciation": "",
+                        "native_script": "",
+                    }
+                )
+            continue
         if not isinstance(term_data, dict):
             continue
         normalized_term = _clean_term_token(term_data.get("term", ""))
@@ -391,8 +476,8 @@ def _ensure_new_terms_for_refs(result: dict) -> List[dict]:
     term_lookup = {t.get("term", "").lower().strip(): t for t in new_terms if t.get("term")}
 
     refs: List[str] = []
-    for para_data in result.get("paragraphs", []) or []:
-        for ref in para_data.get("footnote_refs", []) or []:
+    for para_data in _normalized_paragraphs(result):
+        for ref in para_data["footnote_refs"]:
             cleaned_ref = _clean_term_token(ref)
             r = cleaned_ref.lower().strip()
             if r and r not in term_lookup and r not in [x.lower().strip() for x in refs]:
@@ -428,6 +513,7 @@ def _collect_chunk_outputs(
       - footnotes with correct paragraph_index (offset applied)
       - new_terms list (defensively completed)
     """
+    result = _coerce_transform_result(result)
     new_terms = _ensure_new_terms_for_refs(result)
     # Build lookup for enrichment (immediate)
     chunk_term_data = {t.get("term", "").lower().strip(): t for t in new_terms if t.get("term")}
@@ -435,12 +521,12 @@ def _collect_chunk_outputs(
     out_paras: List[str] = []
     out_footnotes: List[dict] = []
 
-    for local_idx, para_data in enumerate(result.get("paragraphs", []) or []):
-        text = _normalize_annotation_markup(para_data.get("text", "") or "")
+    for local_idx, para_data in enumerate(_normalized_paragraphs(result)):
+        text = _normalize_annotation_markup(para_data["text"] or "")
         out_paras.append(text)
 
         global_para_index = paragraph_index_offset + local_idx
-        for raw_ref in para_data.get("footnote_refs", []) or []:
+        for raw_ref in para_data["footnote_refs"]:
             ref = _clean_term_token(raw_ref)
             if not ref:
                 continue
@@ -493,8 +579,9 @@ _NON_ASCII_ROMANIZATION_MARKERS = {
 
 
 def _result_text(result: dict) -> str:
-    paragraphs = result.get("paragraphs", []) or []
-    return " ".join((p.get("text", "") or "") for p in paragraphs).strip()
+    result = _coerce_transform_result(result)
+    paragraphs = _normalized_paragraphs(result)
+    return " ".join((p["text"] or "") for p in paragraphs).strip()
 
 
 def _romanization_issues(result: dict, lang_code: str, source_lang_code: str = "en") -> List[str]:
@@ -643,6 +730,7 @@ async def run_transformation(project_id: str, job_id: str, db_factory):
                         result = await transform_chunk(system_prompt, input_text, level=level)
                         if result is None:
                             return None
+                        result = _coerce_transform_result(result)
 
                         issues = _romanization_issues(
                             result,
@@ -656,7 +744,7 @@ async def run_transformation(project_id: str, job_id: str, db_factory):
                             quality_hint=_romanization_retry_hint(project.target_language, issues)
                         )
                         retried = await transform_chunk(retry_prompt, input_text, level=level)
-                        return retried if retried is not None else result
+                        return _coerce_transform_result(retried) if retried is not None else result
 
                     if chunk_words <= MAX_CALL_WORDS and not any_para_too_big:
                         # Single call for whole chunk
@@ -735,15 +823,15 @@ async def run_transformation(project_id: str, job_id: str, db_factory):
                                     new_terms = _ensure_new_terms_for_refs(result)
                                     vocab_tracker.add_terms(new_terms, level)
 
-                                    paras = result.get("paragraphs", []) or []
+                                    paras = _normalized_paragraphs(_coerce_transform_result(result))
                                     if paras:
                                         batch_text = _normalize_annotation_markup(
-                                            paras[0].get("text", "") or ""
+                                            paras[0]["text"] or ""
                                         )
                                         combined_text_parts.append(batch_text)
                                         continuity_tail = _update_context_tail(continuity_tail, batch_text)
 
-                                        for raw_ref in paras[0].get("footnote_refs", []) or []:
+                                        for raw_ref in paras[0]["footnote_refs"]:
                                             ref = _clean_term_token(raw_ref)
                                             if ref:
                                                 chapter_footnotes.append(
