@@ -520,7 +520,7 @@ export default function Reader() {
               sideBySide ? 'text-accent font-medium' : 'text-text-muted hover:text-text'
             }`}
           >
-            Compare
+            Parallel reading
           </button>
 
           {/* Chat toggle */}
