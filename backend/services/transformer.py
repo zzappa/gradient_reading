@@ -32,6 +32,7 @@ from services.text_splitter import split_into_paragraphs
 from services.vocabulary import VocabularyTracker
 from services.claude import transform_chunk
 from prompts.levels import build_transform_prompt
+from transformation_artifacts import save_project_snapshot
 
 logger = logging.getLogger(__name__)
 
@@ -876,6 +877,14 @@ async def run_transformation(project_id: str, job_id: str, db_factory):
             job.completed_at = datetime.now(timezone.utc)
             job.completed_chapters = job.total_chapters
             await db.commit()
+            try:
+                await save_project_snapshot(db, project, include_chapters=True)
+            except Exception:
+                logger.warning(
+                    "Could not write transformation snapshot for project %s",
+                    project_id,
+                    exc_info=True,
+                )
     except Exception as e:
         logger.error("Transformation failed for project %s: %s", project_id, e)
         async with db_factory() as db:

@@ -8,6 +8,7 @@ from models.project import Project
 from models.chapter import Chapter
 from schemas.project import ProjectCreate, ProjectRead, ProjectList
 from schemas.chapter import ChapterRead, ChapterList
+from transformation_artifacts import save_project_snapshot
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
@@ -41,6 +42,8 @@ async def create_project(data: ProjectCreate, db: AsyncSession = Depends(get_db)
         start_level=start_level,
     )
     db.add(project)
+    await db.flush()
+    await save_project_snapshot(db, project, include_chapters=False)
     await db.commit()
     await db.refresh(project)
     return ProjectRead.model_validate(project)

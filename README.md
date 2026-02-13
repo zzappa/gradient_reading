@@ -94,7 +94,7 @@ npm run dev
 
 On first backend startup, the app initializes the database and seeds a test user.
 
-If a preseed artifact exists at `backend/artifacts/a-scandal-in-bohemia.json`, that user is automatically populated with pre-transformed "A Scandal in Bohemia" projects from the artifact.
+If a preseed artifact exists at `transformations/samples/a-scandal-in-bohemia.json`, that user is automatically populated with pre-transformed "A Scandal in Bohemia" projects from the artifact.
 
 ## Run with Docker
 
@@ -120,7 +120,7 @@ Notes:
 
 Use this to generate and keep reusable sample transformations for all target languages from:
 
-- `samples/a-scandal-in-bohemia.md`
+- `transformations/samples/a-scandal-in-bohemia.md`
 
 Generate/update artifact:
 
@@ -132,7 +132,7 @@ python scripts/generate_scandal_artifact.py
 
 Notes:
 
-- Default output: `backend/artifacts/a-scandal-in-bohemia.json`
+- Default output: `transformations/samples/a-scandal-in-bohemia.json`
 - Default run scope: all target languages except source language (`en`)
 - The script calls Claude for each language and can take significant time/cost.
 - Re-run with `--force` to rebuild existing language entries.

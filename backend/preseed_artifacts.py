@@ -26,8 +26,9 @@ ARTIFACT_NAME = "a_scandal_in_bohemia_all_languages"
 PRESEED_USER_ID = "00000000-0000-0000-0000-000000000010"
 PRESEED_USER_NAME = "Test User"
 
-PRESEED_ARTIFACT_PATH = Path(__file__).resolve().parent / "artifacts" / "a-scandal-in-bohemia.json"
-PRESEED_SOURCE_PATH = Path(__file__).resolve().parent.parent / "samples" / "a-scandal-in-bohemia.md"
+PRESEED_SAMPLES_DIR = Path(__file__).resolve().parent.parent / "transformations" / "samples"
+PRESEED_ARTIFACT_PATH = PRESEED_SAMPLES_DIR / "a-scandal-in-bohemia.json"
+PRESEED_SOURCE_PATH = PRESEED_SAMPLES_DIR / "a-scandal-in-bohemia.md"
 
 
 def _utc_now_iso() -> str:

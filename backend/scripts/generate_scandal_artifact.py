@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate preseed artifact for `samples/a-scandal-in-bohemia.md`.
+"""Generate preseed artifact for `transformations/samples/a-scandal-in-bohemia.md`.
 
 This script runs full transformations for all configured target languages
 (except the source language), writes the result to an artifact JSON, and keeps
@@ -56,7 +56,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--source",
         default=str(PRESEED_SOURCE_PATH),
-        help="Path to source markdown text (default: samples/a-scandal-in-bohemia.md).",
+        help="Path to source markdown text (default: transformations/samples/a-scandal-in-bohemia.md).",
     )
     parser.add_argument(
         "--output",
