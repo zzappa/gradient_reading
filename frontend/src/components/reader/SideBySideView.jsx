@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { getChapter } from '../../api/client';
 import AnnotatedParagraph from './AnnotatedParagraph';
 import Spinner from '../ui/Spinner';
+import { splitChapterParagraphs } from '../../utils/chapterContent';
 
 export default function SideBySideView({
   projectId,
@@ -75,9 +76,9 @@ export default function SideBySideView({
   // Since each level is a segment of the story, we show the corresponding
   // source paragraphs. The transformed chapter stores its source_text.
   const originalText = transformedChapter.source_text || originalChapter.content || '';
-  const originalParas = originalText.split('\n\n').filter(Boolean);
+  const originalParas = splitChapterParagraphs(originalText);
 
-  const transformedParas = transformedChapter.content?.split('\n\n').filter(Boolean) || [];
+  const transformedParas = splitChapterParagraphs(transformedChapter.content || '');
   const maxLen = Math.max(originalParas.length, transformedParas.length);
 
   const transformedFootnotes = {};

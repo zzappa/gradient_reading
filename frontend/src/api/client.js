@@ -114,9 +114,15 @@ export function evaluateComprehension(projectId, question, answer, level) {
   });
 }
 
-export async function getDictionary(userId) {
-  const data = await request(`/dictionary?user_id=${userId}`);
+export async function getDictionary(userId, language = null) {
+  const languageParam = language ? `&language=${encodeURIComponent(language)}` : '';
+  const data = await request(`/dictionary?user_id=${userId}${languageParam}`);
   return data.terms;
+}
+
+export async function getDictionaryLanguages(userId) {
+  const data = await request(`/dictionary/languages?user_id=${userId}`);
+  return data.languages;
 }
 
 export function sendReaderChat(projectId, message, level, contextParagraph, history, userCefr) {
