@@ -173,7 +173,7 @@ export default function Dashboard() {
             {assessments.length === 0 ? (
               <Card className="p-5">
                 <p className="text-sm text-text-muted">
-                  Take an assessment to determine your proficiency level. This helps
+                  Take an assessment, and Claude will determine your proficiency level. This helps
                   the app tailor content and chat responses to your ability.
                 </p>
               </Card>

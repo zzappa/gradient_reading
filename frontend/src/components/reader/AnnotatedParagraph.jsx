@@ -95,9 +95,9 @@ const AnnotatedParagraph = forwardRef(function AnnotatedParagraph(
 ) {
   const segments = parseAnnotations(text);
 
-  // Use source language voice for levels 0-5 (mostly source text),
-  // target language voice for levels 6-7 (mostly target text)
-  const readAloudLang = level >= 6 ? langCode : sourceLangCode;
+  // Original chapter (0) should read in source language.
+  // Any transformed chapter should read in target language to match what is displayed.
+  const readAloudLang = Number(level) === 0 ? sourceLangCode : langCode;
 
   // Double-click on plain text → grab selected word and open chat
   const handleParaDoubleClick = useCallback(

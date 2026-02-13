@@ -174,7 +174,7 @@ export default function Dictionary() {
           termKey: term.term_key,
           sourceText: chapter?.source_text || '',
           transformedText: chapter?.content || '',
-          targetDisplay: term.native_script || term.term,
+          targetDisplay: term.term || term.native_script,
           translation: term.translation,
         });
       }

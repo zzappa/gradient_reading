@@ -105,8 +105,7 @@ export default function Landing() {
         </p>
         <p className="text-text-muted mb-10 leading-relaxed">
           Your text transforms gradually from English to any target language, introducing
-          grammar and vocabulary one layer at a time. No flashcards, no drills
-          &mdash; just reading.
+          grammar and vocabulary one layer at a time, allowing you to intuitively grasp the structure of the language in context.
         </p>
 
         <div className="space-y-4">

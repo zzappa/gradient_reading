@@ -4,6 +4,30 @@ import AnnotatedParagraph from './AnnotatedParagraph';
 import Spinner from '../ui/Spinner';
 import { splitChapterParagraphs } from '../../utils/chapterContent';
 
+function isStandaloneSeparatorParagraph(paragraph) {
+  const value = (paragraph || '').trim();
+  if (!value) return false;
+  return /^[IVXLCDM]{1,8}[.)]$/i.test(value) || /^\d{1,3}[.)]$/.test(value);
+}
+
+function mergeStandaloneSeparators(paragraphs) {
+  const merged = [];
+  for (let i = 0; i < paragraphs.length; i++) {
+    const current = (paragraphs[i] || '').trim();
+    if (!current) continue;
+
+    const next = (paragraphs[i + 1] || '').trim();
+    if (isStandaloneSeparatorParagraph(current) && next) {
+      merged.push(`${current} ${next}`);
+      i += 1;
+      continue;
+    }
+
+    merged.push(current);
+  }
+  return merged;
+}
+
 export default function SideBySideView({
   projectId,
   chapterNums,
@@ -76,9 +100,11 @@ export default function SideBySideView({
   // Since each level is a segment of the story, we show the corresponding
   // source paragraphs. The transformed chapter stores its source_text.
   const originalText = transformedChapter.source_text || originalChapter.content || '';
-  const originalParas = splitChapterParagraphs(originalText);
+  const originalParas = mergeStandaloneSeparators(splitChapterParagraphs(originalText));
 
-  const transformedParas = splitChapterParagraphs(transformedChapter.content || '');
+  const transformedParas = mergeStandaloneSeparators(
+    splitChapterParagraphs(transformedChapter.content || '')
+  );
   const maxLen = Math.max(originalParas.length, transformedParas.length);
 
   const transformedFootnotes = {};

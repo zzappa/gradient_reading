@@ -1,4 +1,5 @@
 const STORAGE_KEY = 'gradient_flashcards_v1';
+const GENERIC_SUBSTITUTION_PROMPT = 'Replace the highlighted target word with English.';
 
 const MINUTE_MS = 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -28,6 +29,18 @@ function safeParse(raw, fallback) {
 
 function escapeRegExp(text) {
   return (text || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function buildSubstitutionPrompt(target) {
+  const clean = (target || '').trim();
+  return clean ? `Replace "${clean}" with English.` : GENERIC_SUBSTITUTION_PROMPT;
+}
+
+function extractPromptTarget(prompt) {
+  const text = (prompt || '').trim();
+  if (!text) return '';
+  const match = text.match(/^Replace\s+"(.+?)"\s+with English\.?$/i);
+  return match ? (match[1] || '').trim() : '';
 }
 
 function stripParenthetical(text) {
@@ -159,13 +172,138 @@ function replaceFirstInsensitive(text, needle, replacement) {
   const source = (text || '').trim();
   const find = (needle || '').trim();
   const repl = (replacement || '').trim();
-  if (!source || !find || !repl) return source;
+  if (!source || !find || !repl) return '';
+
+  const wordLike = /^[\p{L}\p{M}0-9'’-]+$/u.test(find);
+  if (wordLike) {
+    const tokenRe = /[\p{L}\p{M}0-9'’-]+/gu;
+    let match;
+    while ((match = tokenRe.exec(source)) !== null) {
+      const token = (match[0] || '').trim();
+      if (token.toLowerCase() === find.toLowerCase()) {
+        return `${source.slice(0, match.index)}${repl}${source.slice(match.index + token.length)}`;
+      }
+    }
+    return '';
+  }
 
   const escaped = escapeRegExp(find);
-  const wordLike = /^[A-Za-z0-9'-]+$/.test(find);
-  const pattern = wordLike ? new RegExp(`\\b${escaped}\\b`, 'i') : new RegExp(escaped, 'i');
-  if (!pattern.test(source)) return source;
+  const pattern = new RegExp(escaped, 'i');
+  if (!pattern.test(source)) return '';
   return source.replace(pattern, repl);
+}
+
+function tokenizeWords(text) {
+  return ((text || '').match(/[\p{L}\p{M}0-9'’-]+/gu) || []).filter(Boolean);
+}
+
+function commonPrefixLength(left, right) {
+  const a = (left || '').toLowerCase();
+  const b = (right || '').toLowerCase();
+  const limit = Math.min(a.length, b.length);
+  let i = 0;
+  while (i < limit && a[i] === b[i]) i += 1;
+  return i;
+}
+
+function levenshteinDistance(left, right) {
+  const a = (left || '').toLowerCase();
+  const b = (right || '').toLowerCase();
+  if (!a) return b.length;
+  if (!b) return a.length;
+
+  const prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i += 1) {
+    let diagonal = prev[0];
+    prev[0] = i;
+    for (let j = 1; j <= b.length; j += 1) {
+      const up = prev[j];
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      prev[j] = Math.min(prev[j] + 1, prev[j - 1] + 1, diagonal + cost);
+      diagonal = up;
+    }
+  }
+  return prev[b.length];
+}
+
+function findFuzzySentenceTargetToken(tokens, candidates = []) {
+  let bestToken = '';
+  let bestScore = 0;
+
+  for (const candidate of candidates) {
+    const candidateLower = (candidate || '').toLowerCase().trim();
+    if (candidateLower.length < 4) continue;
+
+    for (const token of tokens) {
+      const tokenLower = (token || '').toLowerCase();
+      if (tokenLower.length < 3) continue;
+      const prefix = commonPrefixLength(tokenLower, candidateLower);
+      if (prefix < 2) continue;
+
+      const distance = levenshteinDistance(tokenLower, candidateLower);
+      const similarity = 1 - (distance / Math.max(tokenLower.length, candidateLower.length));
+      const score = similarity + Math.min(prefix, 4) * 0.05;
+      if (score > bestScore) {
+        bestScore = score;
+        bestToken = token;
+      }
+    }
+  }
+
+  return bestScore >= 0.72 ? bestToken : '';
+}
+
+function findExactNeedleInSentence(sentence, needle) {
+  const text = (sentence || '').trim();
+  const rawNeedle = (needle || '').trim();
+  if (!text || !rawNeedle) return '';
+
+  const wordLike = /^[\p{L}\p{M}0-9'’-]+$/u.test(rawNeedle);
+  if (wordLike) {
+    const tokenRe = /[\p{L}\p{M}0-9'’-]+/gu;
+    let match;
+    while ((match = tokenRe.exec(text)) !== null) {
+      const token = (match[0] || '').trim();
+      if (token.toLowerCase() === rawNeedle.toLowerCase()) {
+        return token;
+      }
+    }
+    return '';
+  }
+
+  const escaped = escapeRegExp(rawNeedle);
+  const pattern = new RegExp(escaped, 'i');
+  const match = text.match(pattern);
+  return match ? (match[0] || '').trim() : '';
+}
+
+function findSentenceTargetToken(sentence, candidates = []) {
+  const text = (sentence || '').trim();
+  if (!text) return '';
+
+  const cleanedCandidates = candidates
+    .map((value) => (value || '').trim())
+    .filter(Boolean)
+    .filter((value, idx, arr) => arr.findIndex((x) => x.toLowerCase() === value.toLowerCase()) === idx)
+    .sort((a, b) => b.length - a.length);
+
+  for (const candidate of cleanedCandidates) {
+    const exact = findExactNeedleInSentence(text, candidate);
+    if (exact) return exact;
+  }
+
+  const tokens = tokenizeWords(text);
+  for (const candidate of cleanedCandidates) {
+    const lower = candidate.toLowerCase();
+    if (lower.length < 3) continue;
+    const prefixed = tokens.find((token) => token.toLowerCase().startsWith(lower));
+    if (prefixed) return prefixed;
+  }
+
+  const fuzzy = findFuzzySentenceTargetToken(tokens, cleanedCandidates);
+  if (fuzzy) return fuzzy;
+
+  return '';
 }
 
 function pickTargetFromAnnotatedSentence(rawSentence, termKey, targetDisplay) {
@@ -178,9 +316,12 @@ function pickTargetFromAnnotatedSentence(rawSentence, termKey, targetDisplay) {
   for (const match of sentence.matchAll(ANNOTATION_RE)) {
     const display = (match[1] || '').trim();
     const keyInSentence = normalizeAnnotationToken(match[2] || '').toLowerCase();
+    const nativeInSentence = normalizeAnnotationToken(match[3] || '').toLowerCase();
     if (!firstDisplay && display) firstDisplay = display;
     if (key && keyInSentence === key) return display || firstDisplay || fallback;
-    if (target && display.toLowerCase() === target) return display || firstDisplay || fallback;
+    if (target && (display.toLowerCase() === target || nativeInSentence === target)) {
+      return display || normalizeAnnotationToken(match[3] || '') || firstDisplay || fallback;
+    }
   }
 
   return firstDisplay || fallback;
@@ -189,7 +330,8 @@ function pickTargetFromAnnotatedSentence(rawSentence, termKey, targetDisplay) {
 function normalizeLoadedCard(card) {
   if (!card || card.schema !== 'substitution') return card;
   const s = card.substitution || {};
-  const target = (card.realScript || card.romanization || card.term || '').trim();
+  const baseTarget = (card.romanization || card.term || card.realScript || '').trim();
+  const nativeTarget = (card.realScript || '').trim();
   let normalized = { ...s };
 
   // Legacy cards that were built as "target sentence with English word".
@@ -201,7 +343,7 @@ function normalizeLoadedCard(card) {
       correctedSentence: s.frontSentence || s.correctedSentence || '',
       answer: card.translation || s.answer || '',
       answerSide: 'en',
-      prompt: `Replace "${target || 'the target word'}" with English.`,
+      prompt: buildSubstitutionPrompt(baseTarget),
     };
   }
 
@@ -210,19 +352,19 @@ function normalizeLoadedCard(card) {
     answerSide: 'en',
   };
 
-  let correctedSentence = (normalized.correctedSentence || '').trim();
+  let correctedSentence = normalizeCardSentenceText((normalized.correctedSentence || '').trim());
   const rawAnswer = normalized.answer || card.translation || '';
   const answer = sanitizeSubstitutionAnswer(rawAnswer, card.translation || '', correctedSentence);
   correctedSentence = replaceGlossPhrase(correctedSentence, rawAnswer, answer);
   correctedSentence = normalizeSentenceOptionNoise(correctedSentence, answer);
 
-  let frontSentence = (normalized.frontSentence || '').trim();
-  frontSentence = replaceGlossPhrase(frontSentence, rawAnswer, target || answer);
-  frontSentence = normalizeSentenceOptionNoise(frontSentence, target || answer);
-  if (correctedSentence && target) {
-    let rebuilt = replaceFirstInsensitive(correctedSentence, answer, target);
+  let frontSentence = normalizeCardSentenceText((normalized.frontSentence || '').trim());
+  frontSentence = replaceGlossPhrase(frontSentence, rawAnswer, baseTarget || answer);
+  frontSentence = normalizeSentenceOptionNoise(frontSentence, baseTarget || answer);
+  if (correctedSentence && baseTarget) {
+    let rebuilt = replaceFirstInsensitive(correctedSentence, answer, baseTarget);
     if (!rebuilt && rawAnswer && rawAnswer !== answer) {
-      rebuilt = replaceFirstInsensitive(correctedSentence, rawAnswer, target);
+      rebuilt = replaceFirstInsensitive(correctedSentence, rawAnswer, baseTarget);
     }
     if (
       rebuilt &&
@@ -237,13 +379,47 @@ function normalizeLoadedCard(card) {
     }
   }
 
+  const promptTargetFromPrompt = extractPromptTarget(normalized.prompt || s.prompt || '');
+  const promptTargetFromSentence = findSentenceTargetToken(frontSentence, [
+    baseTarget,
+    card.term,
+    card.romanization,
+    nativeTarget,
+    promptTargetFromPrompt,
+  ]);
+  const promptTarget = promptTargetFromSentence || baseTarget || card.term || card.romanization || '';
+
+  let fixedFrontSentence = frontSentence;
+  if (!findSentenceTargetToken(fixedFrontSentence, [promptTarget])) {
+    const rebuiltForPrompt = replaceFirstInsensitive(correctedSentence, answer, promptTarget);
+    if (rebuiltForPrompt) fixedFrontSentence = rebuiltForPrompt;
+  }
+
+  const finalPromptTarget = findSentenceTargetToken(fixedFrontSentence, [
+    baseTarget,
+    card.term,
+    card.romanization,
+    nativeTarget,
+    promptTarget,
+    promptTargetFromPrompt,
+  ]);
+  let fixedCorrectedSentence = correctedSentence;
+  if (!findExactNeedleInSentence(fixedCorrectedSentence, answer)) {
+    const derivedCorrected = replaceFirstInsensitive(
+      fixedFrontSentence,
+      finalPromptTarget || promptTarget || baseTarget,
+      answer
+    );
+    if (derivedCorrected) fixedCorrectedSentence = derivedCorrected;
+  }
+
   return {
     ...card,
     substitution: {
       ...normalized,
-      prompt: `Replace "${target || 'the target word'}" with English.`,
-      frontSentence,
-      correctedSentence,
+      prompt: buildSubstitutionPrompt(finalPromptTarget),
+      frontSentence: fixedFrontSentence,
+      correctedSentence: fixedCorrectedSentence,
       answer,
     },
   };
@@ -289,10 +465,98 @@ function stripAnnotations(text) {
   return segments.map((s) => (s.type === 'text' ? s.content : s.display)).join('');
 }
 
+function extractEmbeddedTextEntries(paragraph) {
+  const raw = paragraph || '';
+  const marker = '"text":"';
+  const delimiter = '","footnote_refs":';
+  const entries = [];
+  let cursor = 0;
+
+  while (cursor < raw.length) {
+    const start = raw.indexOf(marker, cursor);
+    if (start < 0) break;
+    const textStart = start + marker.length;
+    const textEnd = raw.indexOf(delimiter, textStart);
+    if (textEnd < 0) break;
+    const extracted = raw
+      .slice(textStart, textEnd)
+      .replace(/\\"/g, '"')
+      .replace(/\\n/g, '\n')
+      .replace(/\\\\/g, '\\')
+      .trim();
+    if (extracted) entries.push(extracted);
+    cursor = textEnd + delimiter.length;
+  }
+
+  return entries;
+}
+
+function normalizeEmbeddedParagraph(paragraph) {
+  const raw = (paragraph || '').trim();
+  if (!raw) return '';
+  if (!raw.includes('"text":"') || !raw.includes('"footnote_refs"')) return raw;
+
+  const entries = extractEmbeddedTextEntries(raw);
+  if (!entries.length) return raw;
+  return entries.join(' ');
+}
+
+function stripInlineFootnoteNoise(text) {
+  const raw = (text || '').trim();
+  if (!raw) return '';
+  const marker = '","footnote_refs":[';
+  const idx = raw.indexOf(marker);
+  if (idx < 0) return raw;
+
+  return raw
+    .slice(0, idx)
+    .replace(/^\[\{"text":"/, '')
+    .replace(/^\{"text":"/, '')
+    .replace(/\\"/g, '"')
+    .replace(/\\n/g, '\n')
+    .replace(/\\\\/g, '\\')
+    .trim();
+}
+
+function normalizeCardSentenceText(text) {
+  const fromNoise = stripInlineFootnoteNoise(text || '');
+  const normalized = normalizeEmbeddedParagraph(fromNoise);
+  return (normalized || '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function normalizeTransformedTextContent(text) {
+  const paragraphs = (text || '').split('\n\n');
+  return paragraphs
+    .map((p) => normalizeEmbeddedParagraph(p))
+    .filter(Boolean)
+    .join('\n\n');
+}
+
+function splitSentenceCandidates(text) {
+  const source = (text || '').trim();
+  if (!source) return [];
+
+  const parts = [];
+  const boundary = /[.!?]+["'”’»)]*\s+/g;
+  let start = 0;
+
+  while (boundary.exec(source) !== null) {
+    const end = boundary.lastIndex;
+    const segment = source.slice(start, end).trim();
+    if (segment) parts.push(segment);
+    start = end;
+  }
+
+  const tail = source.slice(start).trim();
+  if (tail) parts.push(tail);
+  return parts;
+}
+
 
 function splitSentences(text) {
-  return (text || '')
-    .split(/(?<=[.!?])\s+/)
+  return splitSentenceCandidates(text)
     .map((s) => stripAnnotations(s).trim())
     .filter(Boolean);
 }
@@ -313,11 +577,29 @@ function findFirstTermParagraphIndex(footnotes, termKey, targetDisplay) {
   return 0;
 }
 
+function findTermParagraphIndexes(footnotes, termKey, targetDisplay) {
+  const key = (termKey || '').trim().toLowerCase();
+  const target = (targetDisplay || '').trim().toLowerCase();
+  const list = Array.isArray(footnotes) ? footnotes : [];
+  const indexes = new Set();
+
+  for (const fn of list) {
+    const term = (fn?.term || '').trim().toLowerCase();
+    const native = (fn?.native_script || '').trim().toLowerCase();
+    if (!term && !native) continue;
+    if (term === key || (target && (term === target || native === target))) {
+      const idx = Number(fn.paragraph_index);
+      if (Number.isFinite(idx) && idx >= 0) indexes.add(idx);
+    }
+  }
+
+  return [...indexes].sort((a, b) => a - b);
+}
+
 function findSentenceIndexWithTerm(transformedParagraph, termKey, targetDisplay) {
   const key = (termKey || '').trim().toLowerCase();
   const target = (targetDisplay || '').trim().toLowerCase();
-  const sentences = (transformedParagraph || '')
-    .split(/(?<=[.!?])\s+/)
+  const sentences = splitSentenceCandidates(transformedParagraph || '')
     .map((s) => s.trim())
     .filter(Boolean);
 
@@ -327,16 +609,45 @@ function findSentenceIndexWithTerm(transformedParagraph, termKey, targetDisplay)
     for (const match of sentence.matchAll(ANNOTATION_RE)) {
       const display = (match[1] || '').trim().toLowerCase();
       const keyInSentence = (match[2] || '').trim().toLowerCase();
-      if ((key && keyInSentence === key) || (target && display === target)) {
+      const nativeInSentence = normalizeAnnotationToken(match[3] || '').toLowerCase();
+      if (
+        (key && keyInSentence === key) ||
+        (target && (display === target || nativeInSentence === target))
+      ) {
         return i;
       }
     }
 
-    const plain = stripAnnotations(sentence).toLowerCase();
-    if (target && plain.includes(target)) return i;
+    const plain = stripAnnotations(sentence);
+    if (findSentenceTargetToken(plain, [target, key])) return i;
   }
 
-  return 0;
+  return -1;
+}
+
+function findTermSentenceLocation({ transformedParagraphs, footnotes, termKey, targetDisplay }) {
+  const paragraphs = Array.isArray(transformedParagraphs) ? transformedParagraphs : [];
+  const preferred = findFirstTermParagraphIndex(footnotes, termKey, targetDisplay);
+  const byFootnote = findTermParagraphIndexes(footnotes, termKey, targetDisplay);
+  const paragraphOrder = [
+    ...byFootnote,
+    preferred,
+    ...paragraphs.map((_, idx) => idx),
+  ].filter((idx, pos, arr) => Number.isFinite(idx) && idx >= 0 && arr.indexOf(idx) === pos);
+
+  for (const paragraphIndex of paragraphOrder) {
+    const paragraph = paragraphs[paragraphIndex] || '';
+    const sentenceIndex = findSentenceIndexWithTerm(paragraph, termKey, targetDisplay);
+    if (sentenceIndex >= 0) {
+      return { paragraphIndex, sentenceIndex, found: true };
+    }
+  }
+
+  return {
+    paragraphIndex: Number.isFinite(preferred) && preferred >= 0 ? preferred : 0,
+    sentenceIndex: 0,
+    found: false,
+  };
 }
 
 function pickSourceSentence({ sourceParagraphs, paragraphIndex, sentenceIndex, englishNeedle }) {
@@ -380,20 +691,28 @@ export function buildSubstitutionData({
   const chapterSource = chapter?.source_text || '';
   const chapterTransformed = chapter?.content || '';
   const sourceParagraphs = (sourceText || chapterSource || '').split('\n\n').filter(Boolean);
-  const transformedParagraphs = (transformedText || chapterTransformed || '').split('\n\n').filter(Boolean);
+  const normalizedTransformed = normalizeTransformedTextContent(transformedText || chapterTransformed || '');
+  const transformedParagraphs = normalizedTransformed.split('\n\n').filter(Boolean);
 
-  const paragraphIndex = findFirstTermParagraphIndex(chapter?.footnotes, termKey, targetDisplay);
+  const { paragraphIndex, sentenceIndex } = findTermSentenceLocation({
+    transformedParagraphs,
+    footnotes: chapter?.footnotes,
+    termKey,
+    targetDisplay,
+  });
   const transformedParagraph = transformedParagraphs[paragraphIndex] || transformedParagraphs[0] || '';
-  const sentenceIndex = findSentenceIndexWithTerm(transformedParagraph, termKey, targetDisplay);
 
   // Extract the transformed sentence directly — the LLM already placed the target
   // word grammatically in a mixed sentence during transformation.
-  const transformedSentences = (transformedParagraph || '')
-    .split(/(?<=[.!?])\s+/)
+  const transformedSentences = splitSentenceCandidates(transformedParagraph || '')
     .map((s) => s.trim())
     .filter(Boolean);
-  const rawSentence = transformedSentences[sentenceIndex] || transformedSentences[0] || '';
-  const target = pickTargetFromAnnotatedSentence(rawSentence, termKey, targetDisplay) || english;
+  const rawSentence = normalizeCardSentenceText(
+    transformedSentences[sentenceIndex] || transformedSentences[0] || ''
+  );
+  const target = pickTargetFromAnnotatedSentence(rawSentence, termKey, targetDisplay)
+    || (termKey || '').trim()
+    || (targetDisplay || '').trim();
 
   // Original English sentence as the corrected version
   let correctedSentence = pickSourceSentence({
@@ -410,13 +729,23 @@ export function buildSubstitutionData({
   if (!frontSentenceFromSource && english && english !== answer) {
     frontSentenceFromSource = replaceFirstInsensitive(correctedSentence, english, target);
   }
-  const frontSentence = frontSentenceFromSource || stripAnnotations(rawSentence);
+  let frontSentence = frontSentenceFromSource || stripAnnotations(rawSentence);
+  if (!frontSentence) {
+    frontSentence = correctedSentence || '';
+  }
+  const promptTarget = findSentenceTargetToken(frontSentence, [target, termKey, targetDisplay])
+    || findSentenceTargetToken(stripAnnotations(rawSentence), [target, termKey, targetDisplay]);
+  let normalizedCorrected = correctedSentence || answer;
+  if (!findExactNeedleInSentence(normalizedCorrected, answer)) {
+    const derivedCorrected = replaceFirstInsensitive(frontSentence, promptTarget || target, answer);
+    if (derivedCorrected) normalizedCorrected = derivedCorrected;
+  }
 
   return {
     variant: 'en_with_target',
-    prompt: `Replace "${target}" with English.`,
+    prompt: buildSubstitutionPrompt(promptTarget),
     frontSentence,
-    correctedSentence: correctedSentence || answer,
+    correctedSentence: normalizedCorrected || answer,
     answer,
     answerSide: 'en',
   };

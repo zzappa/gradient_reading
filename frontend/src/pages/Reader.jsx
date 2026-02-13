@@ -313,7 +313,7 @@ export default function Reader() {
         termKey: term.term_key,
         sourceText: chapter.source_text || '',
         transformedText: chapter.content || '',
-        targetDisplay: fn.native_script || fn.term,
+        targetDisplay: fn.term || fn.native_script,
         translation: fn.translation,
       });
     }

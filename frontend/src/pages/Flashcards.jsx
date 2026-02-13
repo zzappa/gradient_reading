@@ -19,6 +19,7 @@ import { levelToCefr } from '../utils/cefr';
 import { isSupported as speechSupported, speak, speakTerm, stop } from '../utils/speech';
 
 const SCHEMA_OPTIONS = ['en_target', 'target_en', 'substitution'];
+const GENERIC_SUBSTITUTION_PROMPT = 'Replace the highlighted target word with English.';
 
 function makeDraftId() {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
@@ -41,16 +42,105 @@ function escapeRegExp(text) {
   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function findSubstitutionNeedle(card, sentence) {
-  const haystack = (sentence || '').toLowerCase();
-  if (!haystack) return '';
+function extractSubstitutionPromptTarget(card) {
+  const prompt = (card?.substitution?.prompt || '').trim();
+  const match = prompt.match(/^Replace\s+"(.+?)"\s+with English\.?$/i);
+  return match ? (match[1] || '').trim() : '';
+}
 
-  const candidates = [card?.realScript, card?.romanization, card?.term]
+function findCandidateInSentence(sentence, candidate) {
+  const text = (sentence || '').trim();
+  const needle = (candidate || '').trim();
+  if (!text || !needle) return '';
+
+  const wordLike = /^[\p{L}\p{M}0-9'’-]+$/u.test(needle);
+  if (wordLike) {
+    const tokenRe = /[\p{L}\p{M}0-9'’-]+/gu;
+    const tokens = [];
+    let match;
+    while ((match = tokenRe.exec(text)) !== null) {
+      const token = (match[0] || '').trim();
+      tokens.push(token);
+      if (token.toLowerCase() === needle.toLowerCase()) return token;
+    }
+
+    const needleLower = needle.toLowerCase();
+    let bestToken = '';
+    let bestScore = 0;
+    for (const token of tokens) {
+      const tokenLower = token.toLowerCase();
+      if (tokenLower.length < 3 || needleLower.length < 4) continue;
+
+      let prefix = 0;
+      const limit = Math.min(tokenLower.length, needleLower.length);
+      while (prefix < limit && tokenLower[prefix] === needleLower[prefix]) prefix += 1;
+      if (prefix < 2) continue;
+
+      const rows = tokenLower.length + 1;
+      const cols = needleLower.length + 1;
+      const dp = Array.from({ length: rows }, () => Array(cols).fill(0));
+      for (let i = 0; i < rows; i += 1) dp[i][0] = i;
+      for (let j = 0; j < cols; j += 1) dp[0][j] = j;
+      for (let i = 1; i < rows; i += 1) {
+        for (let j = 1; j < cols; j += 1) {
+          const cost = tokenLower[i - 1] === needleLower[j - 1] ? 0 : 1;
+          dp[i][j] = Math.min(
+            dp[i - 1][j] + 1,
+            dp[i][j - 1] + 1,
+            dp[i - 1][j - 1] + cost
+          );
+        }
+      }
+
+      const distance = dp[rows - 1][cols - 1];
+      const similarity = 1 - (distance / Math.max(tokenLower.length, needleLower.length));
+      const score = similarity + Math.min(prefix, 4) * 0.05;
+      if (score > bestScore) {
+        bestScore = score;
+        bestToken = token;
+      }
+    }
+
+    if (bestScore >= 0.72) return bestToken;
+  }
+
+  const pattern = new RegExp(escapeRegExp(needle), 'i');
+  const match = text.match(pattern);
+  return match ? (match[0] || '').trim() : '';
+}
+
+function findSubstitutionNeedle(card, sentence) {
+  const text = (sentence || '').trim();
+  if (!text) return '';
+
+  const promptTarget = extractSubstitutionPromptTarget(card);
+  const fallbackCandidates = [card?.realScript, card?.romanization, card?.term]
     .map((v) => (v || '').trim())
     .filter(Boolean)
+    .filter(
+      (value, idx, arr) =>
+        arr.findIndex((x) => x.toLowerCase() === value.toLowerCase()) === idx
+    )
     .sort((a, b) => b.length - a.length);
 
-  return candidates.find((value) => haystack.includes(value.toLowerCase())) || '';
+  const candidates = [
+    ...(promptTarget ? [promptTarget] : []),
+    ...fallbackCandidates.filter(
+      (value) => !promptTarget || value.toLowerCase() !== promptTarget.toLowerCase()
+    ),
+  ];
+
+  for (const candidate of candidates) {
+    const match = findCandidateInSentence(text, candidate);
+    if (match) return match;
+  }
+  return '';
+}
+
+function buildSubstitutionPromptText(card) {
+  const sentence = card?.substitution?.frontSentence || '';
+  const target = findSubstitutionNeedle(card, sentence);
+  return target ? `Replace "${target}" with English.` : GENERIC_SUBSTITUTION_PROMPT;
 }
 
 function renderSubstitutionSentence(card, sentence) {
@@ -96,20 +186,13 @@ function sanitizeCorrectSentenceForDisplay(sentence, preferredAnswer) {
 }
 
 function findSubstitutionAnswerNeedle(card, sentence) {
-  const haystack = (sentence || '').toLowerCase();
-  if (!haystack) return '';
+  const text = (sentence || '').trim();
+  if (!text) return '';
 
   const clean = (value) => (value || '')
     .replace(/\([^)]*\)|\[[^\]]*]|{[^}]*}/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
-
-  const matches = (value) => {
-    const escaped = escapeRegExp(value.toLowerCase());
-    const wordLike = /^[A-Za-z0-9'-]+$/.test(value);
-    const pattern = wordLike ? new RegExp(`\\b${escaped}\\b`, 'i') : new RegExp(escaped, 'i');
-    return pattern.test(haystack);
-  };
 
   const candidates = [
     normalizeSubstitutionAnswerText(card?.substitution?.answer),
@@ -121,7 +204,11 @@ function findSubstitutionAnswerNeedle(card, sentence) {
     .filter((v, i, arr) => arr.findIndex((x) => x.toLowerCase() === v.toLowerCase()) === i)
     .sort((a, b) => b.length - a.length);
 
-  return candidates.find(matches) || '';
+  for (const candidate of candidates) {
+    const match = findCandidateInSentence(text, candidate);
+    if (match) return match;
+  }
+  return '';
 }
 
 function renderSubstitutionAnswerSentence(card, sentence) {
@@ -176,13 +263,14 @@ function renderFront(card) {
 
   if (card.schema === 'substitution') {
     const substitution = card.substitution || {};
+    const promptText = buildSubstitutionPromptText(card);
     return (
       <>
         <p className="text-xs uppercase tracking-wide text-text-muted text-center mb-3">
           Substitution
         </p>
         <p className="text-sm text-text-muted text-center mb-4">
-          {substitution.prompt || 'Replace the highlighted target word with English.'}
+          {promptText}
         </p>
         <p className="font-serif text-2xl leading-relaxed text-center">
           {renderSubstitutionSentence(card, substitution.frontSentence || '')}
@@ -617,6 +705,12 @@ export default function Flashcards() {
         lastReviewedAt: null,
       },
     };
+    if (schema === 'substitution') {
+      updated.substitution = {
+        ...(updated.substitution || {}),
+        prompt: buildSubstitutionPromptText(updated),
+      };
+    }
 
     const next = base
       ? cards.map((c) => (c.id === updated.id ? updated : c))
@@ -666,7 +760,7 @@ export default function Flashcards() {
     if (!currentCard || currentCard.schema !== 'substitution' || !speechSupported()) return;
     const sentence = currentCard.substitution?.frontSentence || '';
     if (!sentence.trim()) return;
-    speak(sentence, 'en', { rate: 0.9 });
+    speak(sentence, currentCard.language || 'en', { rate: 0.9 });
   }
 
   return (
@@ -1098,13 +1192,8 @@ export default function Flashcards() {
                   <div className="text-text-muted mb-1">Prompt</div>
                   <input
                     className="w-full px-3 py-2 border border-border rounded-lg bg-bg"
-                    value={editDraft.substitution?.prompt || ''}
-                    onChange={(e) =>
-                      setEditDraft((d) => ({
-                        ...d,
-                        substitution: { ...(d.substitution || {}), prompt: e.target.value },
-                      }))
-                    }
+                    value={buildSubstitutionPromptText(editDraft)}
+                    readOnly
                   />
                 </label>
                 <label className="text-sm block">
