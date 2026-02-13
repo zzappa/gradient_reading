@@ -232,7 +232,14 @@ Common endpoints:
 - `GET /api/projects/{project_id}/export/md`
 - `GET /api/projects/{project_id}/export/epub`
 
+## Acknowledgments
+I first saw this idea of a learning app that gradually introduces foreign language words and grammar into English text from [Scott Alexander](https://www.astralcodexten.com/p/quests-and-requests).
+
+The project was entirely vibe-coded for the Cerebras Valley & Anthropic's [Built with Opus 4.6: a Claude Code Hackathon](https://cerebralvalley.ai/e/claude-code-hackathon), held on February 10-17, 2026.
+
+Many thanks to Scott for the idea and to the organizers of the hackathon :)
+
 ## Notes
-- This is a POC!
+- This is a POC! I'm not a foreign language instructor and have no idea how good it is, use it at your own risk.
 - This project currently uses seeded users and does not implement production authentication/authorization.
 - Transformation quality and speed depend on Anthropic API availability and model behavior.
