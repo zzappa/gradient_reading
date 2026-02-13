@@ -239,7 +239,7 @@ export default function Dictionary() {
 
           {!selectedLanguage ? (
             <p className="text-text-muted">
-              Choose a language to load only that dictionary and keep this page responsive.
+              Choose a language to load that dictionary.
             </p>
           ) : loadingTerms ? (
             <div className="flex justify-center py-16">

@@ -13,7 +13,7 @@ import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
 import Spinner from '../components/ui/Spinner';
 import { useUser } from '../context/UserContext';
-import { nameFor } from '../languages';
+import { LANGUAGES, nameFor } from '../languages';
 import { splitChapterParagraphs } from '../utils/chapterContent';
 import {
   formatSchemaLabel,
@@ -27,19 +27,92 @@ import { levelToCefr } from '../utils/cefr';
 const SESSION_FLASHCARD_TARGET = 5;
 const SESSION_QUESTION_TARGET = 3;
 const ANNOTATION_RE = /\{\{([^|]+)\|\}?([^|}]+)(?:\|\}?([^}]*))?\}\}?/g;
+const SESSION_CHUNK_BAG_KEY = 'gradient_session_chunk_bag_v1';
 
 function plainTextLength(text) {
   return (text || '').replace(ANNOTATION_RE, '$1').replace(/\s+/g, ' ').trim().length;
 }
 
-function pickReadChunk(paragraphs) {
-  const items = paragraphs.filter(Boolean);
-  if (!items.length) return '';
-  return (
-    items.find((paragraph) => plainTextLength(paragraph) >= 120)
-    || items.find((paragraph) => plainTextLength(paragraph) >= 40)
-    || items[0]
-  );
+function safeParse(raw, fallback) {
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function shuffle(items) {
+  const arr = [...items];
+  for (let i = arr.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+function chunkBagKey(projectId, level) {
+  return `${projectId}:${level}`;
+}
+
+function loadChunkBagState() {
+  if (typeof localStorage === 'undefined') return {};
+  return safeParse(localStorage.getItem(SESSION_CHUNK_BAG_KEY), {});
+}
+
+function saveChunkBagState(state) {
+  if (typeof localStorage === 'undefined') return;
+  localStorage.setItem(SESSION_CHUNK_BAG_KEY, JSON.stringify(state));
+}
+
+function chunkCandidates(paragraphs) {
+  const indexed = (paragraphs || [])
+    .map((text, index) => ({ index, text: (text || '').trim() }))
+    .filter((item) => item.text);
+  if (!indexed.length) return [];
+
+  // Prefer reasonably substantive chunks, but allow fallback to any paragraph.
+  const readable = indexed.filter((item) => plainTextLength(item.text) >= 40);
+  return readable.length ? readable : indexed;
+}
+
+function pickReadChunk(paragraphs, projectId, level) {
+  const candidates = chunkCandidates(paragraphs);
+  if (!candidates.length) return '';
+  if (!projectId) return candidates[Math.floor(Math.random() * candidates.length)].text;
+
+  const key = chunkBagKey(projectId, level);
+  const signature = candidates.map((item) => item.index).join(',');
+  const candidateByIndex = new Map(candidates.map((item) => [item.index, item.text]));
+  const state = loadChunkBagState();
+  const previous = state[key];
+
+  const previousIsValid = previous
+    && previous.signature === signature
+    && Array.isArray(previous.remaining);
+
+  let remaining = previousIsValid ? previous.remaining.filter((idx) => candidateByIndex.has(idx)) : [];
+  const lastIndex = previousIsValid && Number.isInteger(previous.lastIndex) ? previous.lastIndex : null;
+
+  if (!remaining.length) {
+    remaining = shuffle(candidates.map((item) => item.index));
+    if (lastIndex !== null && remaining.length > 1 && remaining[0] === lastIndex) {
+      [remaining[0], remaining[1]] = [remaining[1], remaining[0]];
+    }
+  }
+
+  const chosenIndex = remaining[0];
+  const nextRemaining = remaining.slice(1);
+  const chosenText = candidateByIndex.get(chosenIndex) || candidates[0].text;
+
+  state[key] = {
+    signature,
+    remaining: nextRemaining,
+    lastIndex: chosenIndex,
+  };
+  saveChunkBagState(state);
+
+  return chosenText;
 }
 
 function pickClosestLevel(levels, preferredLevel) {
@@ -186,6 +259,7 @@ export default function GuidedSession() {
   const [activeLevel, setActiveLevel] = useState(0);
   const [chapter, setChapter] = useState(null);
   const [readChunk, setReadChunk] = useState('');
+  const [showNativeScript, setShowNativeScript] = useState(false);
 
   const [quizQuestions, setQuizQuestions] = useState([]);
   const [quizIndex, setQuizIndex] = useState(0);
@@ -247,6 +321,15 @@ export default function GuidedSession() {
 
   const currentQuestion = quizQuestions[quizIndex];
   const currentCard = reviewQueue[reviewIndex];
+  const targetScript = LANGUAGES[activeProject?.target_language || 'en']?.script || 'latin';
+  const canToggleNativeScript = targetScript !== 'latin' && activeLevel >= 6;
+  const forceNativeScript = canToggleNativeScript && showNativeScript;
+
+  useEffect(() => {
+    if (!canToggleNativeScript && showNativeScript) {
+      setShowNativeScript(false);
+    }
+  }, [canToggleNativeScript, showNativeScript]);
 
   useEffect(() => {
     if (!currentUser) return;
@@ -337,6 +420,7 @@ export default function GuidedSession() {
     setActiveLevel(sessionLevel);
     setChapter(null);
     setReadChunk('');
+    setShowNativeScript(false);
     setQuizQuestions([]);
     setQuizIndex(0);
     setQuizInput('');
@@ -373,7 +457,7 @@ export default function GuidedSession() {
       }
 
       const paragraphs = splitChapterParagraphs(chapterData?.content || '');
-      const chunk = pickReadChunk(paragraphs);
+      const chunk = pickReadChunk(paragraphs, selectedProjectId, level);
       if (!chunk) {
         throw new Error('This level has no readable chunk yet.');
       }
@@ -626,9 +710,24 @@ export default function GuidedSession() {
                 <p className="text-xs uppercase tracking-wide text-text-muted">Step 1 of 4</p>
                 <h2 className="font-serif text-2xl font-semibold">Read the chunk</h2>
               </div>
-              <span className="text-sm text-text-muted">
-                {activeProject?.title} • {levelLabel(activeLevel)}
-              </span>
+              <div className="flex items-center gap-3">
+                {canToggleNativeScript && (
+                  <button
+                    onClick={() => setShowNativeScript((prev) => !prev)}
+                    className={`px-2.5 py-1 rounded text-xs border transition-colors ${
+                      showNativeScript
+                        ? 'bg-accent text-white border-accent'
+                        : 'bg-bg text-text-muted border-border hover:text-text'
+                    }`}
+                    title="Toggle native script"
+                  >
+                    {showNativeScript ? 'Native script on' : 'Native script off'}
+                  </button>
+                )}
+                <span className="text-sm text-text-muted">
+                  {activeProject?.title} • {levelLabel(activeLevel)}
+                </span>
+              </div>
             </div>
 
             <div className="border border-border rounded-lg p-5 bg-bg mb-6">
@@ -640,6 +739,7 @@ export default function GuidedSession() {
                 langCode={activeProject?.target_language || 'en'}
                 sourceLangCode={activeProject?.source_language || 'en'}
                 level={activeLevel}
+                forceNativeScript={forceNativeScript}
               />
             </div>
 
