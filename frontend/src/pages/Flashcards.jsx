@@ -168,7 +168,7 @@ function renderSubstitutionSentence(card, sentence) {
 function normalizeSubstitutionAnswerText(value) {
   return (value || '')
     .replace(/\([^)]*\)|\[[^\]]*]|{[^}]*}/g, ' ')
-    .split(/[\/;,]/)
+    .split(/[/;,]/)
     .map((part) => part.trim())
     .filter(Boolean)[0] || '';
 }
@@ -198,7 +198,7 @@ function findSubstitutionAnswerNeedle(card, sentence) {
     normalizeSubstitutionAnswerText(card?.substitution?.answer),
     normalizeSubstitutionAnswerText(card?.translation),
   ]
-    .flatMap((v) => (v || '').split(/[\/;,]/))
+    .flatMap((v) => (v || '').split(/[/;,]/))
     .map(clean)
     .filter(Boolean)
     .filter((v, i, arr) => arr.findIndex((x) => x.toLowerCase() === v.toLowerCase()) === i)

@@ -65,7 +65,7 @@ function isReasonableAnswer(value) {
 function looksLikeGloss(text) {
   const value = (text || '').trim();
   if (!value) return true;
-  return /[\/()]/.test(value);
+  return /[/()]/.test(value);
 }
 
 function extractTranslationCandidates(translation) {
@@ -73,7 +73,7 @@ function extractTranslationCandidates(translation) {
   if (!cleaned) return [];
 
   const pieces = cleaned
-    .split(/[\/;,]/)
+    .split(/[/;,]/)
     .map((s) => s.trim())
     .filter(Boolean)
     .map((s) => normalizeCandidateText(s))
@@ -121,7 +121,7 @@ function sanitizeSubstitutionAnswer(rawAnswer, fallbackTranslation, correctedSen
 
   // Final hard clean: keep first concise variant only.
   answer = normalizeCandidateText(answer || '')
-    .split(/[\/;,]/)
+    .split(/[/;,]/)
     .map((s) => s.trim())
     .filter(Boolean)[0] || '';
 

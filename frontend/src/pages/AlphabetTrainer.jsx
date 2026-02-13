@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import PageLayout from '../components/layout/PageLayout';
 import Card from '../components/ui/Card';
@@ -102,27 +102,17 @@ export default function AlphabetTrainer() {
     [progress, langCode, activeTabId, allChars]
   );
 
-  if (!alphabet) {
-    return (
-      <PageLayout>
-        <p className="text-text-muted">
-          No alphabet data available for language code "{langCode}".
-        </p>
-      </PageLayout>
-    );
-  }
-
-  function handleSpeak(char) {
+  const handleSpeak = useCallback((char) => {
     if (!speechSupported()) return;
     speakTerm(char.romaji, langCode, char.char);
-  }
+  }, [langCode]);
 
   function handleCellClick(char) {
     setHighlighted(char.char);
     handleSpeak(char);
   }
 
-  function startQuiz() {
+  const startQuiz = useCallback(() => {
     if (!allChars.length) return;
     const pool = dueChars.length > 0 ? dueChars : allChars;
     const char = pool[Math.floor(Math.random() * pool.length)];
@@ -146,7 +136,7 @@ export default function AlphabetTrainer() {
     }
 
     setTimeout(() => inputRef.current?.focus(), 100);
-  }
+  }, [allChars, dueChars, handleSpeak]);
 
   function checkTypingAnswer() {
     if (!quizChar || quizRevealed) return;
@@ -178,12 +168,22 @@ export default function AlphabetTrainer() {
 
   useEffect(() => {
     if (mode === 'quiz') startQuiz();
-  }, [mode, activeTabId]);
+  }, [mode, activeTabId, startQuiz]);
 
   const nextDue = useMemo(
     () => getNextDueAt(progress, langCode, activeTabId, allChars),
     [progress, langCode, activeTabId, allChars]
   );
+
+  if (!alphabet) {
+    return (
+      <PageLayout>
+        <p className="text-text-muted">
+          No alphabet data available for language code "{langCode}".
+        </p>
+      </PageLayout>
+    );
+  }
 
   return (
     <PageLayout wide>
