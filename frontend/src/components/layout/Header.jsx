@@ -30,8 +30,12 @@ export default function Header() {
   return (
     <header className="border-b border-border bg-bg">
       <div className="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
-        <Link to="/" className="text-lg font-semibold text-text no-underline">
-          Gradient
+        <Link
+          to="/"
+          className="text-lg font-semibold text-text no-underline flex items-center gap-2"
+        >
+          <img src="/app-icon.svg" alt="" className="h-7 w-7 rounded-md" />
+          <span>Gradient</span>
         </Link>
 
         <div className="flex items-center gap-4">
