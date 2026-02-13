@@ -26,6 +26,13 @@ const LANG_MAP = {
   he: 'he-IL',
 };
 
+// Alternate BCP 47 prefixes browsers may use for the same language.
+// Chrome uses legacy 'iw' for Hebrew; Arabic voices vary by region (ar-XA, ar-EG, etc.).
+const LANG_ALIASES = {
+  he: ['iw'],
+  ar: ['ar'],
+};
+
 // Languages whose in-reader text is Latin transliteration, not native script
 const NON_LATIN_LANGS = new Set(['ru', 'ja', 'zh', 'ko', 'he', 'ar']);
 
@@ -86,10 +93,12 @@ function getBestVoice(langCode) {
   const voices = window.speechSynthesis.getVoices();
   if (!voices.length) return null;
 
-  // Filter voices that match the language
+  // Build all prefixes to try: primary + aliases (e.g. he → [he, iw])
   const langPrefix = bcp.split('-')[0];
-  const matching = voices.filter(
-    (v) => v.lang === bcp || v.lang.startsWith(langPrefix + '-')
+  const prefixes = [langPrefix, ...(LANG_ALIASES[langCode] || [])];
+
+  const matching = voices.filter((v) =>
+    v.lang === bcp || prefixes.some((p) => v.lang === p || v.lang.startsWith(p + '-'))
   );
 
   if (!matching.length) return null;
@@ -163,6 +172,60 @@ function chunkText(text) {
 }
 
 /**
+ * Resolve the best utterance.lang tag for a language.
+ * Uses the found voice's own lang (handles Chrome's iw-IL for Hebrew, etc.)
+ * or falls back to our LANG_MAP entry.
+ */
+function resolveUtteranceLang(langCode) {
+  const voice = getBestVoice(langCode);
+  if (voice) return { voice, lang: voice.lang };
+  return { voice: null, lang: LANG_MAP[langCode] || langCode };
+}
+
+/**
+ * Low-level: speak pre-cleaned text with a resolved language.
+ * Chunks at sentence boundaries to avoid Chrome's ~15s speech cutoff.
+ */
+function speakClean(clean, langCode, opts = {}) {
+  if (!clean.trim()) return;
+
+  const chunks = chunkText(clean);
+  const { voice, lang } = resolveUtteranceLang(langCode);
+  let idx = 0;
+
+  function speakNext() {
+    if (idx >= chunks.length) {
+      opts.onEnd?.();
+      return;
+    }
+
+    if (window.speechSynthesis.paused) {
+      window.speechSynthesis.resume();
+    }
+
+    const utterance = new SpeechSynthesisUtterance(chunks[idx]);
+    utterance.lang = lang;
+    utterance.rate = opts.rate || 0.85;
+    if (voice) utterance.voice = voice;
+
+    utterance.onend = () => {
+      idx++;
+      speakNext();
+    };
+    utterance.onerror = (e) => {
+      if (e.error !== 'interrupted') {
+        console.warn('Speech error:', e.error);
+      }
+      opts.onEnd?.();
+    };
+
+    window.speechSynthesis.speak(utterance);
+  }
+
+  speakNext();
+}
+
+/**
  * Speak a text string in the given language.
  * Long text is chunked at sentence boundaries to avoid Chrome's speech cutoff.
  * @param {string} text — raw text (may contain {{display|key}} annotations)
@@ -176,61 +239,19 @@ export function speak(text, langCode, opts = {}) {
 
   // For non-Latin languages: try to substitute native script for TTS,
   // then decide which voice to use based on what we got
-  let clean;
-  let voiceLang = langCode;
-
   if (NON_LATIN_LANGS.has(langCode) && opts.footnotesByKey) {
     const result = stripAnnotationsForTTS(text, opts.footnotesByKey);
-    clean = result.text;
-    // If we have native script substitutions, use target voice (it can read its own script).
-    // If text is still mostly Latin transliteration, use English voice (reads Latin naturally).
-    if (!result.hasNative) {
-      voiceLang = 'en';
-    }
-  } else {
-    clean = stripAnnotations(text);
-  }
-
-  if (!clean.trim()) return;
-
-  const chunks = chunkText(clean);
-  const preferredTag = LANG_MAP[voiceLang] || voiceLang;
-  const fallbackTag = preferredTag.includes('-') ? preferredTag.split('-')[0] : preferredTag;
-  const voice = getBestVoice(voiceLang);
-  let idx = 0;
-
-  function speakNext() {
-    if (idx >= chunks.length) {
-      opts.onEnd?.();
+    if (result.hasNative && getBestVoice(langCode)) {
+      // Native script substitutions + target voice available → speak native script
+      speakClean(result.text, langCode, opts);
       return;
     }
-
-    // Chrome pauses speechSynthesis after ~15s of inactivity; resume it
-    if (window.speechSynthesis.paused) {
-      window.speechSynthesis.resume();
-    }
-
-    const utterance = new SpeechSynthesisUtterance(chunks[idx]);
-    utterance.lang = voice?.lang || fallbackTag;
-    utterance.rate = opts.rate || 0.85;
-    if (voice) utterance.voice = voice;
-
-    utterance.onend = () => {
-      idx++;
-      speakNext();
-    };
-    utterance.onerror = (e) => {
-      // 'interrupted' is normal when stop() is called; only log real errors
-      if (e.error !== 'interrupted') {
-        console.warn('Speech error:', e.error);
-      }
-      opts.onEnd?.();
-    };
-
-    window.speechSynthesis.speak(utterance);
+    // No target voice or no native script — speak transliteration with English
+    speakClean(stripAnnotations(text), 'en', opts);
+    return;
   }
 
-  speakNext();
+  speakClean(stripAnnotations(text), langCode, opts);
 }
 
 /**
@@ -247,10 +268,11 @@ export function speak(text, langCode, opts = {}) {
 export function speakTerm(text, langCode, nativeText = null) {
   if (NON_LATIN_LANGS.has(langCode)) {
     if (nativeText && getBestVoice(langCode)) {
-      // Native script + target language voice = correct pronunciation
+      // Native script + target voice available = correct pronunciation
       speak(nativeText, langCode, { rate: 0.75 });
     } else {
-      // No voice for target language, or no native text — speak transliteration with English voice
+      // No target voice or no native text — speak transliteration with English.
+      // Not perfect, but at least produces audible output.
       speak(text, 'en', { rate: 0.75 });
     }
   } else {
