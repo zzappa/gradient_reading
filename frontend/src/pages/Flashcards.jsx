@@ -13,10 +13,29 @@ import {
   reviewFlashcard,
   saveFlashcards,
 } from '../utils/flashcards';
-import { nameFor } from '../languages';
+import { LANGUAGE_LIST, nameFor } from '../languages';
 import { useUser } from '../context/UserContext';
 import { levelToCefr } from '../utils/cefr';
 import { isSupported as speechSupported, speak, speakTerm, stop } from '../utils/speech';
+
+const SCHEMA_OPTIONS = ['en_target', 'target_en', 'substitution'];
+
+function makeDraftId() {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
+  return `draft_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function emptySubstitution(realScript = '') {
+  const target = (realScript || '').trim() || 'the target word';
+  return {
+    variant: 'en_with_target',
+    prompt: `Replace "${target}" with English.`,
+    frontSentence: '',
+    correctedSentence: '',
+    answer: '',
+    answerSide: 'en',
+  };
+}
 
 function escapeRegExp(text) {
   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -50,6 +69,77 @@ function renderSubstitutionSentence(card, sentence) {
     }
     return (
       <span key={`hit-${idx}`} className="text-emerald-600 font-semibold">
+        {part}
+      </span>
+    );
+  });
+}
+
+function normalizeSubstitutionAnswerText(value) {
+  return (value || '')
+    .replace(/\([^)]*\)|\[[^\]]*]|{[^}]*}/g, ' ')
+    .split(/[\/;,]/)
+    .map((part) => part.trim())
+    .filter(Boolean)[0] || '';
+}
+
+function sanitizeCorrectSentenceForDisplay(sentence, preferredAnswer) {
+  const text = (sentence || '').trim();
+  if (!text) return text;
+  const preferred = normalizeSubstitutionAnswerText(preferredAnswer);
+  const optionRe = /([A-Za-zÀ-ÖØ-öø-ÿ\u0400-\u04FF'-]{1,24})\s*\/\s*([A-Za-zÀ-ÖØ-öø-ÿ\u0400-\u04FF'-]{1,24})(?:\s*\([^)]*\))?/gi;
+  return text
+    .replace(optionRe, () => preferred || '')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/\s+([,.;!?])/g, '$1')
+    .trim();
+}
+
+function findSubstitutionAnswerNeedle(card, sentence) {
+  const haystack = (sentence || '').toLowerCase();
+  if (!haystack) return '';
+
+  const clean = (value) => (value || '')
+    .replace(/\([^)]*\)|\[[^\]]*]|{[^}]*}/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const matches = (value) => {
+    const escaped = escapeRegExp(value.toLowerCase());
+    const wordLike = /^[A-Za-z0-9'-]+$/.test(value);
+    const pattern = wordLike ? new RegExp(`\\b${escaped}\\b`, 'i') : new RegExp(escaped, 'i');
+    return pattern.test(haystack);
+  };
+
+  const candidates = [
+    normalizeSubstitutionAnswerText(card?.substitution?.answer),
+    normalizeSubstitutionAnswerText(card?.translation),
+  ]
+    .flatMap((v) => (v || '').split(/[\/;,]/))
+    .map(clean)
+    .filter(Boolean)
+    .filter((v, i, arr) => arr.findIndex((x) => x.toLowerCase() === v.toLowerCase()) === i)
+    .sort((a, b) => b.length - a.length);
+
+  return candidates.find(matches) || '';
+}
+
+function renderSubstitutionAnswerSentence(card, sentence) {
+  const text = sentence || '';
+  if (!text) return '';
+
+  const needle = findSubstitutionAnswerNeedle(card, text);
+  if (!needle) return text;
+
+  const parts = text.split(new RegExp(`(${escapeRegExp(needle)})`, 'gi'));
+  if (parts.length === 1) return text;
+
+  return parts.map((part, idx) => {
+    if (part.toLowerCase() !== needle.toLowerCase()) {
+      return <span key={`txt-${idx}`}>{part}</span>;
+    }
+    return (
+      <span key={`ans-${idx}`} className="text-emerald-600 font-semibold">
         {part}
       </span>
     );
@@ -129,19 +219,27 @@ function renderBack(card) {
 
   if (card.schema === 'substitution') {
     const substitution = card.substitution || {};
+    const answerText = normalizeSubstitutionAnswerText(substitution.answer || card.translation);
+    const correctedText = sanitizeCorrectSentenceForDisplay(
+      substitution.correctedSentence || substitution.frontSentence || '',
+      answerText
+    );
     return (
       <>
         <p className="text-xs uppercase tracking-wide text-text-muted text-center mb-3">
           Answer
         </p>
-        <p className="font-serif text-4xl leading-tight text-center mb-3">
-          {substitution.answer || card.translation}
+        <p className="font-serif text-4xl leading-tight text-center mb-3 text-emerald-600 dark:text-emerald-400">
+          {answerText || substitution.answer || card.translation}
         </p>
         <p className="text-sm text-text-muted text-center mt-3">
           Correct sentence:
         </p>
         <p className="font-serif text-lg leading-relaxed text-center mt-1">
-          {substitution.correctedSentence || substitution.frontSentence || ''}
+          {renderSubstitutionAnswerSentence(
+            card,
+            correctedText
+          )}
         </p>
       </>
     );
@@ -212,6 +310,8 @@ export default function Flashcards() {
   const { currentUser } = useUser();
   const [cards, setCards] = useState([]);
   const [mode, setMode] = useState('due');
+  const [stackLanguage, setStackLanguage] = useState('');
+  const [createMenuOpen, setCreateMenuOpen] = useState(false);
   const [currentId, setCurrentId] = useState(null);
   const [showBack, setShowBack] = useState(false);
   const [nowTick, setNowTick] = useState(0);
@@ -225,6 +325,7 @@ export default function Flashcards() {
   const [chatSending, setChatSending] = useState(false);
   const [chatByCard, setChatByCard] = useState({});
   const chatBottomRef = useRef(null);
+  const createMenuRef = useRef(null);
 
   useEffect(() => {
     setCards(loadFlashcards());
@@ -238,19 +339,62 @@ export default function Flashcards() {
 
   useEffect(() => () => stop(), []);
 
-  const dueCount = useMemo(() => getDueFlashcards(cards, nowTick).length, [cards, nowTick]);
+  useEffect(() => {
+    if (!createMenuOpen) return undefined;
+    function handleOutsideClick(event) {
+      if (!createMenuRef.current) return;
+      if (!createMenuRef.current.contains(event.target)) {
+        setCreateMenuOpen(false);
+      }
+    }
+    window.addEventListener('mousedown', handleOutsideClick);
+    return () => window.removeEventListener('mousedown', handleOutsideClick);
+  }, [createMenuOpen]);
+
+  const stackStats = useMemo(() => {
+    const statsByLang = new Map();
+    for (const card of cards) {
+      const code = card.language || 'en';
+      if (!statsByLang.has(code)) {
+        statsByLang.set(code, { code, total: 0, due: 0 });
+      }
+      const stat = statsByLang.get(code);
+      stat.total += 1;
+      if ((card.dueAt || 0) <= nowTick) {
+        stat.due += 1;
+      }
+    }
+    return [...statsByLang.values()].sort((a, b) => nameFor(a.code).localeCompare(nameFor(b.code)));
+  }, [cards, nowTick]);
+
+  useEffect(() => {
+    if (!stackStats.length) {
+      if (stackLanguage) setStackLanguage('');
+      return;
+    }
+    if (!stackStats.some((s) => s.code === stackLanguage)) {
+      setStackLanguage(stackStats[0].code);
+    }
+  }, [stackStats, stackLanguage]);
+
+  const activeStack = stackStats.find((s) => s.code === stackLanguage) || null;
+  const stackCards = useMemo(() => {
+    if (!activeStack) return [];
+    return cards.filter((c) => c.language === activeStack.code);
+  }, [cards, activeStack]);
+  const dueCount = useMemo(() => getDueFlashcards(stackCards, nowTick).length, [stackCards, nowTick]);
 
   const queue = useMemo(() => {
     if (mode === 'list') return [];
     if (mode === 'all') {
-      return [...cards].sort((a, b) => (a.dueAt || 0) - (b.dueAt || 0));
+      return [...stackCards].sort((a, b) => (a.dueAt || 0) - (b.dueAt || 0));
     }
-    return getDueFlashcards(cards, nowTick);
-  }, [cards, mode, nowTick]);
+    return getDueFlashcards(stackCards, nowTick);
+  }, [stackCards, mode, nowTick]);
 
   const allCards = useMemo(
-    () => [...cards].sort((a, b) => (a.dueAt || 0) - (b.dueAt || 0)),
-    [cards]
+    () => [...stackCards].sort((a, b) => (a.dueAt || 0) - (b.dueAt || 0)),
+    [stackCards]
   );
 
   const filteredList = useMemo(() => {
@@ -272,7 +416,7 @@ export default function Flashcards() {
     );
   }, [allCards, listQuery]);
 
-  const nextDueAt = useMemo(() => getNextDueAt(cards), [cards]);
+  const nextDueAt = useMemo(() => getNextDueAt(stackCards), [stackCards]);
 
   useEffect(() => {
     if (mode === 'list') return;
@@ -336,6 +480,38 @@ export default function Flashcards() {
   function openEdit(card = currentCard) {
     if (!card) return;
     setEditDraft(JSON.parse(JSON.stringify(card)));
+    setEditOpen(true);
+  }
+
+  function openCreateCard(schema = 'en_target') {
+    setCreateMenuOpen(false);
+    const now = Date.now();
+    const preferredLanguage = activeStack?.code || stackLanguage || 'es';
+    const draft = {
+      id: makeDraftId(),
+      createdAt: now,
+      updatedAt: now,
+      dueAt: now,
+      schema,
+      language: preferredLanguage,
+      termKey: '',
+      term: '',
+      realScript: '',
+      romanization: '',
+      ipa: '',
+      translation: '',
+      grammarNote: '',
+      projectId: null,
+      firstChapter: 0,
+      substitution: schema === 'substitution' ? emptySubstitution() : null,
+      stats: {
+        repetitions: 0,
+        interval: 0,
+        ease: 2.5,
+        lastReviewedAt: null,
+      },
+    };
+    setEditDraft(draft);
     setEditOpen(true);
   }
 
@@ -407,22 +583,61 @@ export default function Flashcards() {
   function saveEdit() {
     if (!editDraft) return;
     const base = cards.find((c) => c.id === editDraft.id);
-    if (!base) return;
+    const now = Date.now();
+    const normalizedTerm = (
+      editDraft.term ||
+      editDraft.romanization ||
+      editDraft.realScript ||
+      ''
+    ).trim();
+    const schema = editDraft.schema || 'en_target';
+    const language = editDraft.language || activeStack?.code || 'es';
+
     const updated = {
       ...base,
       ...editDraft,
-      substitution: editDraft.schema === 'substitution'
-        ? { ...(editDraft.substitution || {}) }
+      schema,
+      language,
+      term: normalizedTerm,
+      termKey: (editDraft.termKey || normalizedTerm).toLowerCase().trim(),
+      substitution: schema === 'substitution'
+        ? {
+          ...emptySubstitution(editDraft.realScript || normalizedTerm),
+          ...(editDraft.substitution || {}),
+          answerSide: 'en',
+        }
         : null,
-      updatedAt: Date.now(),
+      updatedAt: now,
+      createdAt: base?.createdAt || editDraft.createdAt || now,
+      dueAt: base?.dueAt || editDraft.dueAt || now,
+      stats: base?.stats || editDraft.stats || {
+        repetitions: 0,
+        interval: 0,
+        ease: 2.5,
+        lastReviewedAt: null,
+      },
     };
-    const next = cards.map((c) => (c.id === updated.id ? updated : c));
+
+    const next = base
+      ? cards.map((c) => (c.id === updated.id ? updated : c))
+      : [updated, ...cards];
+
     updateCards(next);
     setEditOpen(false);
+    if (!base) {
+      setMode('all');
+      setCurrentId(updated.id);
+      setShowBack(false);
+    }
   }
 
   function deleteEditingCard() {
     if (!editDraft) return;
+    const exists = cards.some((c) => c.id === editDraft.id);
+    if (!exists) {
+      setEditOpen(false);
+      return;
+    }
     if (!window.confirm('Delete this flashcard?')) return;
     const next = deleteFlashcard(editDraft.id);
     setCards(next);
@@ -461,9 +676,32 @@ export default function Flashcards() {
           <h1 className="font-serif text-3xl font-semibold">Flashcards</h1>
           <p className="text-sm text-text-muted mt-1">
             Anki-style review for dictionary terms
+            {activeStack && ` · Stack: ${nameFor(activeStack.code)}`}
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <div className="relative" ref={createMenuRef}>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setCreateMenuOpen((open) => !open)}
+            >
+              Create flashcard
+            </Button>
+            {createMenuOpen && (
+              <div className="absolute right-0 mt-1 w-44 rounded-lg border border-border bg-bg shadow-lg z-20 py-1">
+                {SCHEMA_OPTIONS.map((schema) => (
+                  <button
+                    key={schema}
+                    onClick={() => openCreateCard(schema)}
+                    className="w-full text-left px-3 py-1.5 text-sm hover:bg-surface"
+                  >
+                    {formatSchemaLabel(schema)}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <Button
             variant={mode === 'due' ? 'primary' : 'secondary'}
             size="sm"
@@ -482,7 +720,7 @@ export default function Flashcards() {
               setShowBack(false);
             }}
           >
-            Study all ({cards.length})
+            Study all ({stackCards.length})
           </Button>
           <Button
             variant={mode === 'list' ? 'primary' : 'secondary'}
@@ -497,6 +735,30 @@ export default function Flashcards() {
         </div>
       </div>
 
+      {stackStats.length > 0 && (
+        <div className="mb-5 flex flex-wrap gap-2">
+          {stackStats.map((stack) => (
+            <button
+              key={stack.code}
+              onClick={() => {
+                setStackLanguage(stack.code);
+                setShowBack(false);
+              }}
+              className={`px-3 py-1.5 rounded-lg border text-sm transition-colors ${
+                stack.code === activeStack?.code
+                  ? 'border-accent bg-accent/10 text-accent'
+                  : 'border-border text-text-muted hover:text-text hover:border-accent/50'
+              }`}
+            >
+              <span className="font-medium">{nameFor(stack.code)}</span>
+              <span className="ml-2 text-xs opacity-80">
+                {stack.total} · due {stack.due}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+
       {!cards.length ? (
         <Card className="p-8 text-center">
           <p className="text-text-muted">
@@ -507,7 +769,8 @@ export default function Flashcards() {
         <Card className="p-0 overflow-hidden">
           <div className="p-4 border-b border-border flex flex-wrap items-center justify-between gap-3">
             <div className="text-sm text-text-muted">
-              {filteredList.length} of {cards.length} cards
+              {filteredList.length} of {stackCards.length} cards
+              {activeStack && ` in ${nameFor(activeStack.code)}`}
             </div>
             <input
               type="text"
@@ -575,7 +838,8 @@ export default function Flashcards() {
       ) : !queue.length ? (
         <Card className="p-8 text-center">
           <p className="text-text-muted">
-            No cards due right now.
+            No cards due right now
+            {activeStack && ` for ${nameFor(activeStack.code)}`}.
           </p>
           {nextDueAt && (
             <p className="text-sm text-text-muted mt-2">
@@ -739,10 +1003,58 @@ export default function Flashcards() {
         <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
           <Card className="w-full max-w-2xl p-5">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="font-semibold text-lg">Edit Flashcard</h2>
+              <h2 className="font-semibold text-lg">
+                {cards.some((c) => c.id === editDraft.id) ? 'Edit Flashcard' : 'Create Flashcard'}
+              </h2>
               <span className="text-xs text-text-muted">
                 {nameFor(editDraft.language)} &middot; {formatSchemaLabel(editDraft.schema)}
               </span>
+            </div>
+
+            <div className="grid sm:grid-cols-2 gap-3 mb-3">
+              <label className="text-sm">
+                <div className="text-text-muted mb-1">Language</div>
+                <select
+                  className="w-full px-3 py-2 border border-border rounded-lg bg-bg"
+                  value={editDraft.language || 'es'}
+                  onChange={(e) => setEditDraft((d) => ({ ...d, language: e.target.value }))}
+                >
+                  {LANGUAGE_LIST.map((lang) => (
+                    <option key={lang.code} value={lang.code}>
+                      {lang.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="text-sm">
+                <div className="text-text-muted mb-1">Schema</div>
+                <select
+                  className="w-full px-3 py-2 border border-border rounded-lg bg-bg"
+                  value={editDraft.schema || 'en_target'}
+                  onChange={(e) =>
+                    setEditDraft((d) => {
+                      const nextSchema = e.target.value;
+                      return {
+                        ...d,
+                        schema: nextSchema,
+                        substitution: nextSchema === 'substitution'
+                          ? {
+                            ...emptySubstitution(d.realScript || d.term || d.romanization || ''),
+                            ...(d.substitution || {}),
+                            answerSide: 'en',
+                          }
+                          : null,
+                      };
+                    })
+                  }
+                >
+                  {SCHEMA_OPTIONS.map((schema) => (
+                    <option key={schema} value={schema}>
+                      {formatSchemaLabel(schema)}
+                    </option>
+                  ))}
+                </select>
+              </label>
             </div>
 
             <div className="grid sm:grid-cols-2 gap-3">

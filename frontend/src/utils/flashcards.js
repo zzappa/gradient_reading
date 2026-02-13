@@ -26,39 +26,227 @@ function safeParse(raw, fallback) {
   }
 }
 
+function escapeRegExp(text) {
+  return (text || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function stripParenthetical(text) {
+  return (text || '').replace(/\([^)]*\)|\[[^\]]*]|{[^}]*}/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function normalizeCandidateText(value) {
+  return stripParenthetical(stripAnnotations(value || ''))
+    .replace(/^["'`]+|["'`]+$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function isReasonableAnswer(value) {
+  const text = normalizeCandidateText(value);
+  if (!text) return false;
+  if (/[.!?]/.test(text)) return false;
+  const words = text.split(/\s+/).filter(Boolean);
+  return words.length > 0 && words.length <= 4;
+}
+
+function looksLikeGloss(text) {
+  const value = (text || '').trim();
+  if (!value) return true;
+  return /[\/()]/.test(value);
+}
+
+function extractTranslationCandidates(translation) {
+  const cleaned = stripParenthetical(stripAnnotations(translation || ''));
+  if (!cleaned) return [];
+
+  const pieces = cleaned
+    .split(/[\/;,]/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((s) => normalizeCandidateText(s))
+    .filter(Boolean);
+
+  const unique = [];
+  for (const piece of pieces) {
+    if (!unique.some((u) => u.toLowerCase() === piece.toLowerCase())) {
+      unique.push(piece);
+    }
+  }
+  return unique;
+}
+
+function chooseAnswerCandidate(translation, correctedSentence) {
+  const candidates = extractTranslationCandidates(translation).filter(isReasonableAnswer);
+  if (!candidates.length) return '';
+
+  const sentence = (correctedSentence || '').toLowerCase();
+  if (!sentence) return candidates[0];
+
+  const inSentence = candidates.find((candidate) => {
+    const escaped = escapeRegExp(candidate.toLowerCase());
+    const pattern = new RegExp(`\\b${escaped}\\b`, 'i');
+    return pattern.test(sentence);
+  });
+  return inSentence || candidates[0];
+}
+
+function sanitizeSubstitutionAnswer(rawAnswer, fallbackTranslation, correctedSentence) {
+  const raw = (rawAnswer || '').trim();
+  const fallback = (fallbackTranslation || '').trim();
+
+  let answer = chooseAnswerCandidate(raw || fallback, correctedSentence)
+    || chooseAnswerCandidate(fallback, correctedSentence)
+    || '';
+
+  if (!answer) {
+    const candidates = [
+      ...extractTranslationCandidates(raw),
+      ...extractTranslationCandidates(fallback),
+    ].filter(isReasonableAnswer);
+    answer = candidates[0] || stripParenthetical(raw || fallback);
+  }
+
+  // Final hard clean: keep first concise variant only.
+  answer = normalizeCandidateText(answer || '')
+    .split(/[\/;,]/)
+    .map((s) => s.trim())
+    .filter(Boolean)[0] || '';
+
+  if (!isReasonableAnswer(answer)) {
+    answer = normalizeCandidateText(answer)
+      .split(/\s+/)
+      .map((token) => token.replace(/^[^A-Za-zÀ-ÖØ-öø-ÿ\u0400-\u04FF']+|[^A-Za-zÀ-ÖØ-öø-ÿ\u0400-\u04FF']+$/g, ''))
+      .find(Boolean) || '';
+  }
+
+  return answer.trim();
+}
+
+function normalizeSentenceOptionNoise(sentence, preferredReplacement = '') {
+  const text = (sentence || '').trim();
+  if (!text) return text;
+
+  const preferred = normalizeCandidateText(preferredReplacement);
+  const optionRe = /([A-Za-zÀ-ÖØ-öø-ÿ\u0400-\u04FF'-]{1,24})\s*\/\s*([A-Za-zÀ-ÖØ-öø-ÿ\u0400-\u04FF'-]{1,24})(?:\s*\([^)]*\))?/gi;
+
+  return text
+    .replace(optionRe, (_, left, right) => {
+      if (preferred) return preferred;
+      return normalizeCandidateText(left) || normalizeCandidateText(right) || '';
+    })
+    .replace(/\s{2,}/g, ' ')
+    .replace(/\s+([,.;!?])/g, '$1')
+    .trim();
+}
+
+function replaceGlossPhrase(sentence, rawGloss, replacement) {
+  const text = (sentence || '').trim();
+  const raw = stripAnnotations(rawGloss || '').trim();
+  const repl = (replacement || '').trim();
+  if (!text || !raw || !repl || !looksLikeGloss(raw)) return text;
+
+  const pattern = new RegExp(escapeRegExp(raw), 'i');
+  if (!pattern.test(text)) return text;
+
+  return text
+    .replace(pattern, repl)
+    .replace(/\s{2,}/g, ' ')
+    .replace(/\s+([,.;!?])/g, '$1')
+    .trim();
+}
+
+function replaceFirstInsensitive(text, needle, replacement) {
+  const source = (text || '').trim();
+  const find = (needle || '').trim();
+  const repl = (replacement || '').trim();
+  if (!source || !find || !repl) return source;
+
+  const escaped = escapeRegExp(find);
+  const wordLike = /^[A-Za-z0-9'-]+$/.test(find);
+  const pattern = wordLike ? new RegExp(`\\b${escaped}\\b`, 'i') : new RegExp(escaped, 'i');
+  if (!pattern.test(source)) return source;
+  return source.replace(pattern, repl);
+}
+
+function pickTargetFromAnnotatedSentence(rawSentence, termKey, targetDisplay) {
+  const sentence = rawSentence || '';
+  const key = (termKey || '').trim().toLowerCase();
+  const target = (targetDisplay || '').trim().toLowerCase();
+  const fallback = (targetDisplay || '').trim();
+
+  let firstDisplay = '';
+  for (const match of sentence.matchAll(ANNOTATION_RE)) {
+    const display = (match[1] || '').trim();
+    const keyInSentence = normalizeAnnotationToken(match[2] || '').toLowerCase();
+    if (!firstDisplay && display) firstDisplay = display;
+    if (key && keyInSentence === key) return display || firstDisplay || fallback;
+    if (target && display.toLowerCase() === target) return display || firstDisplay || fallback;
+  }
+
+  return firstDisplay || fallback;
+}
+
 function normalizeLoadedCard(card) {
   if (!card || card.schema !== 'substitution') return card;
   const s = card.substitution || {};
+  const target = (card.realScript || card.romanization || card.term || '').trim();
+  let normalized = { ...s };
 
   // Legacy cards that were built as "target sentence with English word".
   if (s.answerSide === 'target') {
-    const target = card.romanization || card.term || card.realScript || '';
-    return {
-      ...card,
-      substitution: {
-        ...s,
-        variant: 'en_with_target',
-        frontSentence: s.correctedSentence || s.frontSentence || '',
-        correctedSentence: s.frontSentence || s.correctedSentence || '',
-        answer: card.translation || s.answer || '',
-        answerSide: 'en',
-        prompt: `Replace "${target}" with English.`,
-      },
+    normalized = {
+      ...normalized,
+      variant: 'en_with_target',
+      frontSentence: s.correctedSentence || s.frontSentence || '',
+      correctedSentence: s.frontSentence || s.correctedSentence || '',
+      answer: card.translation || s.answer || '',
+      answerSide: 'en',
+      prompt: `Replace "${target || 'the target word'}" with English.`,
     };
   }
 
-  if (s.answerSide !== 'en') {
-    return {
-      ...card,
-      substitution: {
-        ...s,
-        answerSide: 'en',
-        answer: s.answer || card.translation || '',
-      },
-    };
+  normalized = {
+    ...normalized,
+    answerSide: 'en',
+  };
+
+  let correctedSentence = (normalized.correctedSentence || '').trim();
+  const rawAnswer = normalized.answer || card.translation || '';
+  const answer = sanitizeSubstitutionAnswer(rawAnswer, card.translation || '', correctedSentence);
+  correctedSentence = replaceGlossPhrase(correctedSentence, rawAnswer, answer);
+  correctedSentence = normalizeSentenceOptionNoise(correctedSentence, answer);
+
+  let frontSentence = (normalized.frontSentence || '').trim();
+  frontSentence = replaceGlossPhrase(frontSentence, rawAnswer, target || answer);
+  frontSentence = normalizeSentenceOptionNoise(frontSentence, target || answer);
+  if (correctedSentence && target) {
+    let rebuilt = replaceFirstInsensitive(correctedSentence, answer, target);
+    if (!rebuilt && rawAnswer && rawAnswer !== answer) {
+      rebuilt = replaceFirstInsensitive(correctedSentence, rawAnswer, target);
+    }
+    if (
+      rebuilt &&
+      (
+        !frontSentence ||
+        looksLikeGloss(rawAnswer) ||
+        looksLikeGloss(frontSentence) ||
+        frontSentence.toLowerCase() === correctedSentence.toLowerCase()
+      )
+    ) {
+      frontSentence = rebuilt;
+    }
   }
 
-  return card;
+  return {
+    ...card,
+    substitution: {
+      ...normalized,
+      prompt: `Replace "${target || 'the target word'}" with English.`,
+      frontSentence,
+      correctedSentence,
+      answer,
+    },
+  };
 }
 
 function makeId() {
@@ -188,10 +376,6 @@ export function buildSubstitutionData({
   translation,
 }) {
   const english = (translation || '').trim() || '';
-  const target = (targetDisplay || '').trim() || english;
-
-  // Use first translation alternative as the answer (before comma/semicolon)
-  const primaryEnglish = english.split(/[,;]/).map((s) => s.trim()).filter(Boolean)[0] || english;
 
   const chapterSource = chapter?.source_text || '';
   const chapterTransformed = chapter?.content || '';
@@ -209,22 +393,31 @@ export function buildSubstitutionData({
     .map((s) => s.trim())
     .filter(Boolean);
   const rawSentence = transformedSentences[sentenceIndex] || transformedSentences[0] || '';
-  const frontSentence = stripAnnotations(rawSentence);
+  const target = pickTargetFromAnnotatedSentence(rawSentence, termKey, targetDisplay) || english;
 
   // Original English sentence as the corrected version
-  const correctedSentence = pickSourceSentence({
+  let correctedSentence = pickSourceSentence({
     sourceParagraphs,
     paragraphIndex,
     sentenceIndex,
-    englishNeedle: primaryEnglish,
+    englishNeedle: english,
   });
+
+  const answer = sanitizeSubstitutionAnswer(english, english, correctedSentence) || english;
+  correctedSentence = replaceGlossPhrase(correctedSentence, english, answer);
+
+  let frontSentenceFromSource = replaceFirstInsensitive(correctedSentence, answer, target);
+  if (!frontSentenceFromSource && english && english !== answer) {
+    frontSentenceFromSource = replaceFirstInsensitive(correctedSentence, english, target);
+  }
+  const frontSentence = frontSentenceFromSource || stripAnnotations(rawSentence);
 
   return {
     variant: 'en_with_target',
     prompt: `Replace "${target}" with English.`,
     frontSentence,
-    correctedSentence: correctedSentence || primaryEnglish,
-    answer: primaryEnglish,
+    correctedSentence: correctedSentence || answer,
+    answer,
     answerSide: 'en',
   };
 }

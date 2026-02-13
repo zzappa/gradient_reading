@@ -675,6 +675,7 @@ export default function Reader() {
                             {[
                               { schema: 'target_en', label: 'T\u2192E' },
                               { schema: 'en_target', label: 'E\u2192T' },
+                              { schema: 'substitution', label: 'Sub' },
                             ].map(({ schema, label }) => {
                               const fbKey = `${fn.term}_${schema}`;
                               return cardFeedback[fbKey] ? (
